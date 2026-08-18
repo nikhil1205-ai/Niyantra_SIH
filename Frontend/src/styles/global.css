@@ -1,0 +1,96 @@
+/* Global Webflow Fixes & Custom Styles */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*[tabindex]:focus-visible,
+input[type="file"]:focus-visible {
+   outline: 0.125rem solid #4d65ff;
+   outline-offset: 0.125rem;
+}
+
+.w-richtext > :not(div):first-child, .w-richtext > div:first-child > :first-child {
+  margin-top: 0 !important;
+}
+
+.w-richtext>:last-child, .w-richtext ol li:last-child, .w-richtext ul li:last-child {
+	margin-bottom: 0 !important;
+}
+
+.pointer-events-off {
+	pointer-events: none;
+}
+
+.pointer-events-on {
+  pointer-events: auto;
+}
+
+.div-square::after {
+	content: "";
+	display: block;
+	padding-bottom: 100%;
+}
+
+.container-medium, .container-small, .container-large {
+	margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+.text-style-3lines {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+}
+
+.text-style-2lines {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.display-inlineflex {
+  display: inline-flex;
+}
+
+.hide {
+  display: none !important;
+}
+
+@media screen and (max-width: 991px) {
+    .hide, .hide-tablet {
+        display: none !important;
+    }
+}
+@media screen and (max-width: 767px) {
+    .hide-mobile {
+        display: none !important;
+    }
+}
+
+/* Accordion helper styles */
+.accordion svg:nth-of-type(2) { display: none; }
+.accordion.is-active svg:nth-of-type(1) { display: none; }
+.accordion.is-active svg:nth-of-type(2) { display: block; }
+.accordion.is-active .accordion_head { color: #0087CC; }
+
+/* Hero Illustration Rotation Animation */
+@keyframes spinRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.h-hero__illustration__elements {
+  animation: spinRotate 50s linear infinite !important;
+  transform-origin: center center !important;
+  will-change: transform;
+}
+
