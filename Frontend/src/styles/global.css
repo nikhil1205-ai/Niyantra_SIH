@@ -94,3 +94,19 @@ input[type="file"]:focus-visible {
   will-change: transform;
 }
 
+/* NIYANTRA Workspace Layout */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+@media screen and (max-width: 991px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+

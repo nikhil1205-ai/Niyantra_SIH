@@ -52,15 +52,7 @@ export default function Navbar() {
                     How It Works
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    to="/architecture"
-                    className={`nav-link-2 ${location.pathname === '/architecture' ? 'w--current' : ''}`}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Architecture
-                  </Link>
-                </li>
+
                 <li>
                   <Link
                     to="/risk-engine"

@@ -44,8 +44,8 @@ export default function Footer() {
                 <Link to="/how-it-works" className="footer_link">
                   How It Works
                 </Link>
-                <Link to="/architecture" className="footer_link">
-                  Architecture
+                <Link to="/how-it-works" className="footer_link">
+                  Workspace
                 </Link>
                 <Link to="/risk-engine" className="footer_link">
                   Risk Engine

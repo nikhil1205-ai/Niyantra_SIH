@@ -79,8 +79,8 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <Link to="/architecture" className="button-_secondary-wide">
-                View Architecture
+              <Link to="/how-it-works" className="button-_secondary-wide">
+                View Workspace
               </Link>
             </div>
 
