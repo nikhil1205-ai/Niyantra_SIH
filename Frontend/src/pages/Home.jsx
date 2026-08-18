@@ -9,33 +9,22 @@ export default function Home() {
         <div className="w-layout-hflex flex-block">
           <div className="container-large">
             <div className="h-hero_content">
-              <div className="h-hero_title" data-ix="slide-in-animation">
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', background: 'rgba(0, 135, 204, 0.1)', border: '1px solid rgba(0, 135, 204, 0.25)', borderRadius: '20px', marginBottom: '16px' }}>
-                  <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-                    <path d="M16 3L27 7.5V15C27 21.5 22.2 27.2 16 29C9.8 27.2 5 21.5 5 15V7.5L16 3Z" stroke="#0087CC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="rgba(0, 135, 204, 0.2)" />
-                    <circle cx="16" cy="16" r="4" fill="#0087CC" />
-                  </svg>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#0087CC', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                    NIYANTRA
-                  </span>
-                </div>
-                <h1 className="heading-style-h1">Risk-Adaptive Autonomous Governance</h1>
+              <div className="h-hero_title">
+                <h1 className="heading-style-h1" style={{ lineHeight: '1.1', color: '#000433' }}>
+                  <span style={{ fontSize: '2rem', fontWeight: '400', display: 'block', marginBottom: '8px' }}>Risk changes.</span>
+                  <span style={{ fontSize: '4.5rem', fontWeight: '900', letterSpacing: '-2px', color: '#0087CC', display: 'block', marginBottom: '12px' }}>Autonomy adapts.</span>
+                  <span style={{ fontSize: '2.75rem', fontWeight: '700', letterSpacing: '-1px', display: 'block' }}>Governance stays in control.</span>
+                </h1>
               </div>
-              <div className="h-hero_text" data-ix="slide-in-animation">
-                <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#000433', marginBottom: '8px' }}>
-                  For Safe and Explainable Government Workflows
-                </h3>
-                <p className="text-size-large">
-                  AI autonomy that adapts to risk — <span className="text-span-9">in real time</span>.
+              <div className="h-hero_text">
+                <p className="text-size-large" style={{ fontSize: '22px', color: '#4a5568', lineHeight: '1.6', fontWeight: '500', marginTop: '16px' }}>
+                  NIYANTRA provides real-time risk-aware control for safe and explainable AI-agent workflows.
                 </p>
               </div>
               <div className="spacer-large"></div>
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 <Link to="/how-it-works" className="button-primary w-button">
                   Explore NIYANTRA
-                </Link>
-                <Link to="/architecture" className="button-_secondary-wide" style={{ width: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                  See How It Works
                 </Link>
               </div>
             </div>
