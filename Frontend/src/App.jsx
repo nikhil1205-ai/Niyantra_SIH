@@ -27,7 +27,7 @@ export default function App() {
           <Route index element={<Home />} />
           
           {/* Primary NIYANTRA Routes */}
-          <Route path="how-it-works" element={<NiyantraWorkspace />} />
+          <Route path="workspace" element={<NiyantraWorkspace />} />
           <Route path="risk-engine" element={<RiskEngine />} />
           <Route path="demo" element={<Demo />} />
           <Route path="about" element={<About />} />

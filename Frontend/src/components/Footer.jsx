@@ -41,10 +41,7 @@ export default function Footer() {
             >
               <div className="heading-style-h3">Platform</div>
               <div className="footer_menu_links">
-                <Link to="/how-it-works" className="footer_link">
-                  How It Works
-                </Link>
-                <Link to="/how-it-works" className="footer_link">
+                <Link to="/workspace" className="footer_link">
                   Workspace
                 </Link>
                 <Link to="/risk-engine" className="footer_link">

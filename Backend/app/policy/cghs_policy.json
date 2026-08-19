@@ -1,0 +1,41 @@
+{
+  "version": "CGHS-POLICY-V1",
+  "description": "CGHS claim processing policy rules for NIYANTRA prototype",
+  "rules": [
+    {
+      "id": "RATE-001",
+      "name": "Claim exceeds approved CGHS rate",
+      "condition": "claimed_amount > approved_rate",
+      "severity": 80,
+      "description": "The claimed amount is higher than the approved package rate for this procedure."
+    },
+    {
+      "id": "DUP-001",
+      "name": "Possible duplicate claim detected",
+      "condition": "duplicate_claim == true",
+      "severity": 75,
+      "description": "A claim for the same procedure and beneficiary has already been filed recently."
+    },
+    {
+      "id": "DOC-001",
+      "name": "Required document missing",
+      "condition": "missing_document == true",
+      "severity": 60,
+      "description": "One or more required supporting documents are not present in the claim file."
+    },
+    {
+      "id": "BEN-001",
+      "name": "Beneficiary information conflict",
+      "condition": "beneficiary_conflict == true",
+      "severity": 70,
+      "description": "Beneficiary details in the claim do not match the registered CGHS beneficiary record."
+    },
+    {
+      "id": "HIGH-001",
+      "name": "High value claim threshold",
+      "condition": "claimed_amount > 100000",
+      "severity": 50,
+      "description": "Claim amount exceeds ₹1,00,000 and requires additional verification."
+    }
+  ]
+}

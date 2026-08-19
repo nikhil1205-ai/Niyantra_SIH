@@ -23,7 +23,7 @@ export default function Home() {
               </div>
               <div className="spacer-large"></div>
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <Link to="/how-it-works" className="button-primary w-button">
+                <Link to="/workspace" className="button-primary w-button">
                   Explore NIYANTRA
                 </Link>
               </div>
@@ -79,9 +79,11 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <Link to="/how-it-works" className="button-_secondary-wide">
-                View Workspace
-              </Link>
+              <div className="button-group">
+                <Link to="/workspace" className="button-primary w-button">
+                  Access Workspace
+                </Link>
+              </div>
             </div>
 
             <div id="w-node-_501296ed-3771-f9cf-fc7e-d8c18f2a31ed-7f346238" className="pricing-card">

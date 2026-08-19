@@ -45,11 +45,11 @@ export default function Navbar() {
               <ul role="list" className="nav-menu _2 w-list-unstyled">
                 <li>
                   <Link
-                    to="/how-it-works"
-                    className={`nav-link-2 ${location.pathname === '/how-it-works' ? 'w--current' : ''}`}
+                    to="/workspace"
+                    className={`nav-link-2 ${location.pathname === '/workspace' ? 'w--current' : ''}`}
                     onClick={() => setIsOpen(false)}
                   >
-                    How It Works
+                    Workspace
                   </Link>
                 </li>
 
