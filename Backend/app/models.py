@@ -17,6 +17,7 @@ class Case(SQLModel, table=True):
     # Module 4 additions
     action_state: str = Field(default="PROPOSED")              # PROPOSED | PERMITTED | REQUIRES_REAUTHORIZATION | RESTRICTED | BLOCKED | EXECUTED
     has_evidence_conflict: bool = Field(default=False)         # True when field evidence contradicts AI evidence
+    state_version: int = Field(default=1)                      # Increments on every verified state-changing event
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -236,6 +237,10 @@ class ExternalEventRequest(BaseModel):
     description: str = ""
     location: str = ""
     damage_finding: str = "UNKNOWN"          # SEVERE | MAJOR | MODERATE | MINOR | NONE | UNKNOWN
+    # Structured Condition Fields
+    field: Optional[str] = None              # damage_severity | identity_status | fraud_indicator | evidence_quality
+    previous_value: Optional[str] = None
+    new_value: Optional[str] = None
     evidence_files: Optional[List[str]] = []
     # For OFFICER: can be VERIFIED. For PUBLIC: server always overrides to PENDING.
     verification_status: str = "PENDING"

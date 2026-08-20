@@ -42,6 +42,13 @@ def _run_sqlite_migrations():
             )
             print("[DB MIGRATION] Added column: cases.has_evidence_conflict")
 
+        # Core Governance: state_version column
+        if "state_version" not in existing_columns:
+            cursor.execute(
+                "ALTER TABLE cases ADD COLUMN state_version INTEGER NOT NULL DEFAULT 1"
+            )
+            print("[DB MIGRATION] Added column: cases.state_version")
+
         # ── case_events table migrations ───────────────────────────────────────
         cursor.execute("PRAGMA table_info(case_events)")
         evt_columns = {row[1] for row in cursor.fetchall()}

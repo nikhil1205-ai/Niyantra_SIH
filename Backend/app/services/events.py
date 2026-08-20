@@ -213,6 +213,9 @@ class EventProcessor:
         event_id = f"EVT-{uuid.uuid4().hex[:8].upper()}"
         damage_finding = request.damage_finding
 
+        # Increment Canonical State Version
+        case_obj.state_version += 1
+
         # Store CaseEvent (VERIFIED)
         incoming = CaseEvent(
             event_id=event_id,
@@ -228,6 +231,9 @@ class EventProcessor:
                 "damage_finding":  damage_finding,
                 "location":        request.location,
                 "evidence_files":  request.evidence_files or [],
+                "field":           request.field,
+                "previous_value":  request.previous_value,
+                "new_value":       request.new_value,
             }),
             created_at=now,
         )
@@ -375,6 +381,9 @@ class EventProcessor:
         evt.verification_status = "VERIFIED"
         evt.submitted_by = f"{evt.submitted_by} [Verified by {request.verified_by}]"
         self.session.add(evt)
+
+        # Increment Canonical State Version
+        case_obj.state_version += 1
 
         # Promote evidence linked to this event
         meta = json.loads(evt.metadata_json) if evt.metadata_json else {}

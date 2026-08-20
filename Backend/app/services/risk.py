@@ -26,6 +26,7 @@ from app.models import (
     Case, Application, Evidence, AgentResult, CaseEvent,
     RiskEvaluation, AutonomyDecision, DecisionLineage,
 )
+from app.services.state import StateService
 
 
 # ─── CENTRALISED RISK CONFIGURATION ───────────────────────────────────────────
@@ -91,29 +92,25 @@ class RiskEngine:
     Deterministic, weighted risk calculator.
     Each factor is independently normalised to 0–100 (higher = riskier).
     Final score = weighted sum of factors, clamped to 0–100.
+    Consumes canonical case state to prevent score drift and double counting.
     """
 
     @staticmethod
-    def calculate(
-        case: Case,
-        app: Application,
-        evidence: List[Evidence],
-        agent_results: List[AgentResult],
-    ) -> Dict[str, Any]:
+    def calculate_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Compute a risk score from 7 transparent factors.
+        Compute a risk score from canonical state.
         Returns a dict with risk_score, risk_level, risk_factors, explanation.
         """
         weights = RISK_CONFIG["weights"]
         factors: List[Dict[str, Any]] = []
 
+        agent_results = list(state.get("agent_results", {}).values())
+
         # ── Factor 1: Agent Confidence ─────────────────────────────────────────
-        # Lower average confidence across agents → higher risk.
         if agent_results:
-            avg_conf = sum(r.confidence for r in agent_results) / len(agent_results)
+            avg_conf = sum(getattr(r, "confidence", 0.0) for r in agent_results) / len(agent_results)
         else:
             avg_conf = 0.0
-        # confidence 1.0 → risk 0;  confidence 0.0 → risk 100
         conf_raw = round((1.0 - avg_conf) * 100, 1)
         conf_contribution = _classify_contribution(conf_raw)
         factors.append({
@@ -127,10 +124,8 @@ class RiskEngine:
         })
 
         # ── Factor 2: Agent Disagreement ──────────────────────────────────────
-        # Any disagreement status among agents significantly raises risk.
         disagreement_statuses = {"REQUIRES_REVIEW", "INCONSISTENT", "INELIGIBLE", "FAILED"}
-        disagree_count = sum(1 for r in agent_results if r.status in disagreement_statuses)
-        # 0 agents disagree → 0 risk; all 3 disagree → 90 risk
+        disagree_count = sum(1 for r in agent_results if getattr(r, "status", "") in disagreement_statuses)
         disagree_raw = min(round((disagree_count / max(len(agent_results), 1)) * 90, 1), 90.0)
         disagree_contribution = _classify_contribution(disagree_raw)
         factors.append({
@@ -144,15 +139,13 @@ class RiskEngine:
         })
 
         # ── Factor 3: Evidence Reliability ────────────────────────────────────
-        # Agents that have no linked evidence refs are less reliable.
         agents_with_evidence = sum(
             1 for r in agent_results
-            if r.evidence_ids_json and json.loads(r.evidence_ids_json)
+            if getattr(r, "evidence_ids_json", None) and json.loads(getattr(r, "evidence_ids_json"))
         )
         total_agents = max(len(agent_results), 1)
         evidence_coverage = agents_with_evidence / total_agents
-        # Full coverage → low risk; no coverage → high risk
-        ev_raw = round((1.0 - evidence_coverage) * 70, 1)  # max 70 to avoid overwhelming
+        ev_raw = round((1.0 - evidence_coverage) * 70, 1)
         ev_contribution = _classify_contribution(ev_raw)
         factors.append({
             "factor": "evidence_reliability",
@@ -165,33 +158,33 @@ class RiskEngine:
         })
 
         # ── Factor 4: Action Impact ────────────────────────────────────────────
-        # Ratio of requested_amount to estimated_damage. High ratio = more risk.
-        if app and app.estimated_damage and app.estimated_damage > 0:
-            ratio = app.requested_amount / app.estimated_damage
-            # ratio 0.0 → risk 0;  ratio 1.0+ → risk 80
+        req_amount = state.get("requested_amount", 0.0)
+        est_damage = state.get("estimated_damage", 0.0)
+        if est_damage and est_damage > 0:
+            ratio = req_amount / est_damage
             impact_raw = round(min(ratio, 1.0) * 80, 1)
         else:
-            impact_raw = 50.0  # unknown damage → moderate risk
+            impact_raw = 50.0
         impact_contribution = _classify_contribution(impact_raw)
         factors.append({
             "factor": "action_impact",
             "display": "Action Impact",
-            "raw_value": round(app.requested_amount if app else 0, 2),
-            "raw_label": f"Relief ratio {round((app.requested_amount / app.estimated_damage * 100) if app and app.estimated_damage else 0, 1)}% of damage estimate",
+            "raw_value": round(req_amount, 2),
+            "raw_label": f"Relief ratio {round((req_amount / est_damage * 100) if est_damage else 0, 1)}% of damage estimate",
             "factor_risk": impact_raw,
             "contribution": impact_contribution,
             "weight": weights["action_impact"],
         })
 
         # ── Factor 5: Policy Sensitivity ──────────────────────────────────────
-        # Certain disaster types carry inherently higher policy risk.
+        disaster_type = state.get("disaster_type", "Flood")
         high_sens = RISK_CONFIG["high_sensitivity_disasters"]
-        if app and app.disaster_type in high_sens:
+        if disaster_type in high_sens:
             policy_raw = 65.0
-            policy_label = f"{app.disaster_type} — high-sensitivity category"
+            policy_label = f"{disaster_type} — high-sensitivity category"
         else:
             policy_raw = 20.0
-            policy_label = f"{app.disaster_type if app else 'Unknown'} — standard category"
+            policy_label = f"{disaster_type} — standard category"
         policy_contribution = _classify_contribution(policy_raw)
         factors.append({
             "factor": "policy_sensitivity",
@@ -203,41 +196,40 @@ class RiskEngine:
             "weight": weights["policy_sensitivity"],
         })
 
-        # ── Factor 6: Anomaly Detection ───────────────────────────────────────
-        # Missing identity doc or damage photo raises anomaly risk.
-        # Module 4: active evidence conflict adds a significant bonus.
-        has_identity = any(e.type == "identity_doc" for e in evidence)
-        has_damage   = any(e.type == "damage_photo" for e in evidence)
-        missing = (0 if has_identity else 1) + (0 if has_damage else 1)
-        anomaly_raw = round(missing * 35.0, 1)  # each missing critical doc adds 35
+        # ── Factor 6: Anomaly Detection (Documents, Conflict & Fraud) ──────────
+        missing = 0 if state.get("evidence_count", 0) > 0 else 2
+        anomaly_raw = round(missing * 25.0, 1)
 
-        # Apply evidence conflict bonus when field report contradicts AI damage assessment
-        conflict_active = getattr(case, "has_evidence_conflict", False)
+        conflict_active = state.get("has_evidence_conflict", False)
+        fraud_active = state.get("fraud_indicator", False)
         conflict_note = ""
+
         if conflict_active:
             anomaly_raw = min(anomaly_raw + RISK_CONFIG["evidence_conflict_bonus"], 100.0)
-            conflict_note = " + active evidence conflict with field inspection report"
+            conflict_note += " + active evidence conflict"
+        if fraud_active:
+            anomaly_raw = min(anomaly_raw + 45.0, 100.0)
+            conflict_note += " + verified fraud indicator"
 
         anomaly_contribution = _classify_contribution(anomaly_raw)
         factors.append({
             "factor": "anomaly",
             "display": "Process Anomalies",
             "raw_value": missing,
-            "raw_label": f"{missing} critical document type(s) absent{conflict_note}",
+            "raw_label": f"{missing} document issue(s){conflict_note}",
             "factor_risk": anomaly_raw,
             "contribution": anomaly_contribution,
             "weight": weights["anomaly"],
             "conflict_active": conflict_active,
+            "fraud_active": fraud_active,
         })
 
         # ── Factor 7: Financial / Citizen Impact ──────────────────────────────
-        # Higher absolute relief request → slightly higher risk.
-        req_amt = app.requested_amount if app else 0
         hi_thresh = RISK_CONFIG["financial_high_threshold"]
         lo_thresh = RISK_CONFIG["financial_low_threshold"]
-        if req_amt >= hi_thresh:
+        if req_amount >= hi_thresh:
             fin_raw = 80.0
-        elif req_amt >= lo_thresh:
+        elif req_amount >= lo_thresh:
             fin_raw = 45.0
         else:
             fin_raw = 15.0
@@ -245,8 +237,8 @@ class RiskEngine:
         factors.append({
             "factor": "financial_impact",
             "display": "Financial / Citizen Impact",
-            "raw_value": req_amt,
-            "raw_label": f"Requested ₹{req_amt:,.0f}",
+            "raw_value": req_amount,
+            "raw_label": f"Requested ₹{req_amount:,.0f}",
             "factor_risk": fin_raw,
             "contribution": fin_contribution,
             "weight": weights["financial_impact"],
@@ -257,7 +249,6 @@ class RiskEngine:
         risk_score = round(min(max(weighted_sum, 0.0), 100.0), 1)
         risk_level = _classify_risk_level(risk_score)
 
-        # ── Explanation ───────────────────────────────────────────────────────
         explanation = _build_explanation(risk_score, risk_level, factors, disagree_count, avg_conf)
 
         return {
@@ -266,6 +257,26 @@ class RiskEngine:
             "risk_factors": factors,
             "explanation": explanation,
         }
+
+    @staticmethod
+    def calculate(
+        case: Case,
+        app: Application,
+        evidence: List[Evidence],
+        agent_results: List[AgentResult],
+    ) -> Dict[str, Any]:
+        """Backward compatibility wrapper for calculate."""
+        state = {
+            "case_id": case.case_id,
+            "requested_amount": app.requested_amount if app else 0.0,
+            "estimated_damage": app.estimated_damage if app else 0.0,
+            "disaster_type": app.disaster_type if app else "Flood",
+            "evidence_count": len(evidence),
+            "agent_results": {r.agent_name: r for r in agent_results},
+            "has_evidence_conflict": getattr(case, "has_evidence_conflict", False),
+            "fraud_indicator": False,
+        }
+        return RiskEngine.calculate_from_state(state)
 
 
 # ─── AUTONOMY CONTROLLER ───────────────────────────────────────────────────────
@@ -318,31 +329,25 @@ class RiskOrchestrator:
           5. Update Case.current_risk, current_autonomy, current_stage
           6. Emit RISK_EVALUATED + AUTONOMY_ASSIGNED CaseEvents
         """
-        # ── Load data ─────────────────────────────────────────────────────────
+        # ── Load canonical case state ──────────────────────────────────────────
         case_obj = self.session.exec(select(Case).where(Case.case_id == case_id)).first()
         if not case_obj:
             raise ValueError(f"Case {case_id} not found.")
 
-        app_obj = self.session.exec(select(Application).where(Application.case_id == case_id)).first()
-        evidence = self.session.exec(select(Evidence).where(Evidence.case_id == case_id)).all()
+        canonical_state = StateService.get_current_case_state(self.session, case_id)
+        agent_results = list(canonical_state.get("agent_results", {}).values())
 
-        # Latest agent results (deduplicated by agent name)
-        raw_agents = self.session.exec(
-            select(AgentResult).where(AgentResult.case_id == case_id).order_by(AgentResult.id.desc())
-        ).all()
-        seen, agent_results = set(), []
-        for r in raw_agents:
-            if r.agent_name not in seen:
-                seen.add(r.agent_name)
-                agent_results.append(r)
-
-        if not agent_results:
-            raise ValueError(
-                f"Case {case_id} has no agent results. Run AI Agent Review (Module 2) first."
-            )
-
-        # ── Calculate risk ────────────────────────────────────────────────────
-        risk_result = RiskEngine.calculate(case_obj, app_obj, evidence, agent_results)
+        # ── Calculate risk with fail-safe error handling ──────────────────────
+        try:
+            risk_result = RiskEngine.calculate_from_state(canonical_state)
+        except Exception as err:
+            # FAIL-SAFE: If risk engine fails, default to score 85 (HIGH risk, L1)
+            risk_result = {
+                "risk_score": 85.0,
+                "risk_level": "HIGH",
+                "risk_factors": [{"factor": "system_fail_safe", "factor_risk": 85.0, "contribution": "HIGH", "weight": 1.0}],
+                "explanation": f"Fail-safe protection triggered due to calculation error: {str(err)}",
+            }
 
         # ── Decide autonomy ───────────────────────────────────────────────────
         previous_autonomy = case_obj.current_autonomy
@@ -389,9 +394,9 @@ class RiskOrchestrator:
             }
             for r in agent_results
         }
+        avg_conf_pct = (round(sum(r.confidence for r in agent_results)/len(agent_results)*100, 1)) if agent_results else 0.0
         summary_explanation = (
-            f"Case {case_id}: Agent avg confidence {round(sum(r.confidence for r in agent_results)/len(agent_results)*100, 1)}%. "
-            f"Disagreement: {'Yes' if any(r.status in {'REQUIRES_REVIEW','INCONSISTENT','INELIGIBLE','FAILED'} for r in agent_results) else 'None'}. "
+            f"Case {case_id}: Agent avg confidence {avg_conf_pct}%. "
             f"Risk Score: {risk_result['risk_score']}. Autonomy: {autonomy_result['autonomy_level']}. "
             f"Reason: {autonomy_result['reason']}"
         )
@@ -409,12 +414,18 @@ class RiskOrchestrator:
         )
         self.session.add(lineage_record)
 
-        # ── Update Case State ─────────────────────────────────────────────────
+        # ── Update Case State & Automatic Routing ─────────────────────────────
         case_obj.current_risk     = risk_result["risk_score"]
         case_obj.current_autonomy = autonomy_result["autonomy_level"]
-        case_obj.current_stage    = "RISK_EVALUATED"
-        case_obj.status           = "RISK_EVALUATED"
-        case_obj.updated_at       = now
+        
+        # AUTOMATIC ROUTING: If L1 (Human Controlled), set stage to REQUIRES_HUMAN_REVIEW
+        if autonomy_result["autonomy_level"] == "L1":
+            case_obj.current_stage = "REQUIRES_HUMAN_REVIEW"
+        else:
+            case_obj.current_stage = "RISK_EVALUATED"
+
+        case_obj.status     = "RISK_EVALUATED"
+        case_obj.updated_at = now
         self.session.add(case_obj)
 
         # ── Emit CaseEvents ───────────────────────────────────────────────────

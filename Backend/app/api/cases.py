@@ -236,54 +236,65 @@ def get_case_details(
     has_disagreement = any(s in ("REQUIRES_REVIEW", "INCONSISTENT", "INELIGIBLE", "FAILED") for s in statuses)
     consensus = "PARTIAL_DISAGREEMENT" if has_disagreement else ("FULL_CONSENSUS" if parsed_agents else "PENDING")
 
-    # Fetch latest risk evaluation
-    latest_risk = session.exec(
-        select(RiskEvaluation).where(RiskEvaluation.case_id == case_id).order_by(RiskEvaluation.id.desc())
-    ).first()
-    risk_data = None
-    if latest_risk:
-        risk_data = {
-            "risk_id":      latest_risk.risk_id,
-            "risk_score":   latest_risk.risk_score,
-            "risk_level":   latest_risk.risk_level,
-            "risk_factors": json.loads(latest_risk.risk_factors_json) if latest_risk.risk_factors_json else [],
-            "explanation":  latest_risk.explanation,
-            "created_at":   latest_risk.created_at,
+    # Fetch all risk evaluations (ordered chronologically)
+    all_risk_objs = session.exec(
+        select(RiskEvaluation).where(RiskEvaluation.case_id == case_id).order_by(RiskEvaluation.id.asc())
+    ).all()
+    parsed_risk_history = [
+        {
+            "risk_id":      r.risk_id,
+            "risk_score":   r.risk_score,
+            "risk_level":   r.risk_level,
+            "risk_factors": json.loads(r.risk_factors_json) if r.risk_factors_json else [],
+            "explanation":  r.explanation,
+            "created_at":   r.created_at,
         }
+        for r in all_risk_objs
+    ]
+    latest_risk = parsed_risk_history[-1] if parsed_risk_history else None
+    previous_risk = parsed_risk_history[-2]["risk_score"] if len(parsed_risk_history) >= 2 else None
+    current_risk_score = latest_risk["risk_score"] if latest_risk else None
+    risk_delta = (current_risk_score - previous_risk) if (current_risk_score is not None and previous_risk is not None) else None
 
-    # Fetch latest autonomy decision
-    latest_auto = session.exec(
-        select(AutonomyDecision).where(AutonomyDecision.case_id == case_id).order_by(AutonomyDecision.id.desc())
-    ).first()
-    autonomy_data = None
-    if latest_auto:
-        autonomy_data = {
-            "decision_id":        latest_auto.decision_id,
-            "autonomy_level":     latest_auto.autonomy_level,
-            "previous_autonomy":  latest_auto.previous_autonomy,
-            "allowed_actions":    json.loads(latest_auto.allowed_actions_json) if latest_auto.allowed_actions_json else [],
-            "restricted_actions": json.loads(latest_auto.restricted_actions_json) if latest_auto.restricted_actions_json else [],
-            "reason":             latest_auto.reason,
-            "created_at":         latest_auto.created_at,
+    # Fetch all autonomy decisions (ordered chronologically)
+    all_auto_objs = session.exec(
+        select(AutonomyDecision).where(AutonomyDecision.case_id == case_id).order_by(AutonomyDecision.id.asc())
+    ).all()
+    parsed_auto_history = [
+        {
+            "decision_id":        a.decision_id,
+            "autonomy_level":     a.autonomy_level,
+            "previous_autonomy":  a.previous_autonomy,
+            "allowed_actions":    json.loads(a.allowed_actions_json) if a.allowed_actions_json else [],
+            "restricted_actions": json.loads(a.restricted_actions_json) if a.restricted_actions_json else [],
+            "reason":             a.reason,
+            "created_at":         a.created_at,
         }
+        for a in all_auto_objs
+    ]
+    latest_auto = parsed_auto_history[-1] if parsed_auto_history else None
 
     return {
-        "case_id":         case_obj.case_id,
-        "status":          case_obj.status,
-        "current_stage":   case_obj.current_stage,
-        "current_risk":    case_obj.current_risk,
-        "current_autonomy": case_obj.current_autonomy,
-        "action_state":    case_obj.action_state,
+        "case_id":               case_obj.case_id,
+        "status":                case_obj.status,
+        "current_stage":         case_obj.current_stage,
+        "current_risk":          case_obj.current_risk,
+        "current_autonomy":      case_obj.current_autonomy,
+        "action_state":          case_obj.action_state,
         "has_evidence_conflict": case_obj.has_evidence_conflict,
-        "agent_consensus": consensus,
-        "created_at":      case_obj.created_at,
-        "updated_at":      case_obj.updated_at,
-        "application":     app_obj,
-        "evidence":        evidence_items,
-        "agent_results":   parsed_agents,
-        "events":          events,
-        "risk":            risk_data,
-        "autonomy":        autonomy_data,
+        "agent_consensus":       consensus,
+        "created_at":            case_obj.created_at,
+        "updated_at":            case_obj.updated_at,
+        "application":           app_obj,
+        "evidence":              evidence_items,
+        "agent_results":         parsed_agents,
+        "events":                events,
+        "risk":                  latest_risk,
+        "previous_risk":         previous_risk,
+        "risk_delta":            risk_delta,
+        "all_risks":             parsed_risk_history,
+        "autonomy":              latest_auto,
+        "all_autonomies":        parsed_auto_history,
     }
 
 

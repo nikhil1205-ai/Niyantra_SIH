@@ -34,22 +34,21 @@ def get_officer_review_queue(session: Session = Depends(get_session)) -> List[Di
     queue = []
 
     for c in cases:
-        # Check if case requires officer intervention
+        # Check if case actually requires human officer intervention
         needs_review = (
-            c.current_stage in ("REQUIRES_HUMAN_REVIEW", "RUNTIME_REEVALUATION", "AWAITING_ADDITIONAL_EVIDENCE") or
+            c.current_stage in ("REQUIRES_HUMAN_REVIEW", "AWAITING_ADDITIONAL_EVIDENCE") or
             c.current_autonomy == "L1" or
-            c.has_evidence_conflict or
-            c.status in ("REQUIRES_HUMAN_REVIEW", "PROCESSING")
+            c.status == "REQUIRES_HUMAN_REVIEW"
         )
         
-        # Check associated actions
+        # Check associated actions requiring human authorization
         pending_actions = session.exec(
             select(AIAction)
             .where(AIAction.case_id == c.case_id)
-            .where(AIAction.status.in_(["REQUIRES_HUMAN_AUTHORIZATION", "REQUIRES_REAUTHORIZATION", "BLOCKED", "PROPOSED", "PERMITTED"]))
+            .where(AIAction.status.in_(["REQUIRES_HUMAN_AUTHORIZATION", "REQUIRES_REAUTHORIZATION", "BLOCKED"]))
         ).all()
 
-        if needs_review or pending_actions:
+        if needs_review or (pending_actions and c.current_autonomy == "L1"):
             app_obj = session.exec(select(Application).where(Application.case_id == c.case_id)).first()
             
             latest_auto = session.exec(
