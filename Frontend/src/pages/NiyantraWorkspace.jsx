@@ -2,134 +2,261 @@ import React, { useState, useEffect } from 'react'
 
 const API_BASE_URL = 'http://127.0.0.1:8000'
 
-const DOCUMENT_TYPES = [
-  'Case Files',
-  'Evidence',
-  'Rules & Regulations',
-  'Reports',
-  'Policies',
-  'Government Documents',
-  'Other Documents',
+const WORKSPACE_SECTIONS = [
+  { id: 'Form', label: 'Form (App Intake)' },
+  { id: 'Review', label: 'Review Case' },
+  { id: 'Risk', label: 'Risk Engine' },
+  { id: 'Progress', label: 'Progress Pipeline' },
+  { id: 'EventUpdates', label: 'Event Updates' },
+  { id: 'Officer Review', label: 'Officer Review' },
+]
+
+
+const DEFAULT_EVIDENCE = [
+  { type: 'identity_doc', file_name: 'citizen_identity_proof.pdf', mime_type: 'application/pdf', source: 'CITIZEN' },
+  { type: 'damage_photo', file_name: 'disaster_damage_photo1.jpg', mime_type: 'image/jpeg', source: 'CITIZEN' },
 ]
 
 export default function NiyantraWorkspace() {
-  const [selectedDocumentType, setSelectedDocumentType] = useState('Case Files')
-  
-  // Backend & Case States
-  const [isBackendConnected, setIsBackendConnected] = useState(false)
-  const [activeCaseRef, setActiveCaseRef] = useState('')
-  const [caseData, setCaseData] = useState(null)
-  const [lineageData, setLineageData] = useState([])
-  const [narrativeData, setNarrativeData] = useState(null)
-  const [latestProposal, setLatestProposal] = useState(null)
-  const [gatewayResult, setGatewayResult] = useState(null)
-  const [demoInstructions, setDemoInstructions] = useState([])
-  
-  // Form States
+  const [activeTab, setActiveTab] = useState('Form')
+
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+  const [validationErrors, setValidationErrors] = useState({})
 
-  // New Case Form State
-  const [newCase, setNewCase] = useState({
-    claimed_amount: 45000,
-    approved_rate: 40000,
-    hospital_name: 'Max Healthcare',
-    beneficiary_id: 'BEN-10042',
-    diagnosis: 'Cardiology Consultation & Tests',
-    description: 'CGHS OPD Medical Claim'
+  // Active Case State
+  const [activeCaseRef, setActiveCaseRef] = useState('')
+  const [caseDetails, setCaseDetails] = useState(null)
+  const [submittedResult, setSubmittedResult] = useState(null)
+
+  // Module 1 Form State
+  const [form, setForm] = useState({
+    full_name: '',
+    citizen_id: '',
+    phone: '',
+    address: '',
+    district: '',
+    state: '',
+    disaster_type: 'Flood',
+    disaster_date: new Date().toISOString().split('T')[0],
+    affected_location: '',
+    damage_type: 'House',
+    estimated_damage: '',
+    bank_account: '',
+    ifsc: '',
+    requested_amount: '',
   })
 
-  // New Evidence Form State
-  const [evidenceType, setEvidenceType] = useState('rate_mismatch')
-  const [evidenceDesc, setEvidenceDesc] = useState('Claimed amount exceeds approved CGHS rate card')
-  const [evidenceSource, setEvidenceSource] = useState('billing_audit')
+  // Evidence state (pre-populated with default documents)
+  const [evidenceList, setEvidenceList] = useState(DEFAULT_EVIDENCE)
+  const [newEvType, setNewEvType] = useState('identity_doc')
+  const [newEvFileName, setNewEvFileName] = useState('')
 
-  // Proposal Action State
-  const [proposalAction, setProposalAction] = useState('settlement')
-
-  // Approval Form State
-  const [approvalNotes, setApprovalNotes] = useState('Reviewed by CGHS Senior Officer')
-  const [humanId, setHumanId] = useState('OFFICER-789')
-
-  // Ping Backend on Mount
-  useEffect(() => {
-    checkBackendHealth()
-  }, [])
-
-  const checkBackendHealth = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/`)
-      if (res.ok) {
-        setIsBackendConnected(true)
-      } else {
-        setIsBackendConnected(false)
-      }
-    } catch {
-      setIsBackendConnected(false)
-    }
-  }
-
-  // ─── API HANDLERS ─────────────────────────────────────────────────────────────
-
-  // 1. GET /api/cases/{case_ref}
-  const fetchCaseDetails = async (caseRefToFetch) => {
-    const ref = caseRefToFetch || activeCaseRef
-    if (!ref) return
-    setLoading(true)
-    setErrorMsg('')
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(ref)}`)
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || 'Failed to fetch case details')
-      }
-      const data = await res.json()
-      setCaseData(data)
-      setActiveCaseRef(data.case_ref)
-      
-      // Auto fetch lineage & explainability
-      fetchLineage(data.case_ref)
-      fetchExplain(data.case_ref)
-    } catch (err) {
-      setErrorMsg(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 2. POST /api/cases
-  const createNewCase = async (e) => {
-    if (e) e.preventDefault()
-    setLoading(true)
+  // Reset form state for new application
+  const handleResetForm = () => {
+    setForm({
+      full_name: '',
+      citizen_id: '',
+      phone: '',
+      address: '',
+      district: '',
+      state: '',
+      disaster_type: 'Flood',
+      disaster_date: new Date().toISOString().split('T')[0],
+      affected_location: '',
+      damage_type: 'House',
+      estimated_damage: '',
+      bank_account: '',
+      ifsc: '',
+      requested_amount: '',
+    })
+    setEvidenceList(DEFAULT_EVIDENCE)
+    setValidationErrors({})
     setErrorMsg('')
     setSuccessMsg('')
+    setSubmittedResult(null)
+  }
+
+  // Fill sample test application data
+  const handleFillSampleData = () => {
+    setForm({
+      full_name: 'Rahul Sharma',
+      citizen_id: 'CTZ-884920',
+      phone: '9876543210',
+      address: 'House 42, Riverbank Ward No. 4',
+      district: 'Kamrup Metro',
+      state: 'Assam',
+      disaster_type: 'Flood',
+      disaster_date: '2026-08-15',
+      affected_location: 'Ward 4 Riverbank Colony, Guwahati',
+      damage_type: 'House',
+      estimated_damage: '80000',
+      bank_account: '918273645012',
+      ifsc: 'SBIN0001234',
+      requested_amount: '25000',
+    })
+    setEvidenceList(DEFAULT_EVIDENCE)
+    setValidationErrors({})
+    setErrorMsg('')
+    setSuccessMsg('Sample test application data loaded.')
+  }
+
+  // Add evidence item
+  const handleAddEvidence = () => {
+    let nameToAdd = newEvFileName.trim()
+    if (!nameToAdd) {
+      if (newEvType === 'identity_doc') nameToAdd = 'citizen_identity_proof.pdf'
+      else if (newEvType === 'property_doc') nameToAdd = 'property_deed.pdf'
+      else if (newEvType === 'damage_photo') nameToAdd = `disaster_damage_photo_${evidenceList.length + 1}.jpg`
+      else nameToAdd = 'supporting_verification_doc.pdf'
+    }
+
+    setEvidenceList([
+      ...evidenceList,
+      {
+        type: newEvType,
+        file_name: nameToAdd,
+        mime_type: nameToAdd.endsWith('.jpg') || nameToAdd.endsWith('.png') ? 'image/jpeg' : 'application/pdf',
+        source: 'CITIZEN',
+      },
+    ])
+    setNewEvFileName('')
+    setValidationErrors((prev) => {
+      const copy = { ...prev }
+      delete copy.evidence
+      return copy
+    })
+  }
+
+  const handleRemoveEvidence = (index) => {
+    setEvidenceList(evidenceList.filter((_, i) => i !== index))
+  }
+
+  // Validate form before submission
+  const validateForm = () => {
+    const errors = {}
+
+    if (!form.full_name.trim()) errors.full_name = 'Full Name is required.'
+    if (!form.citizen_id.trim()) errors.citizen_id = 'Citizen ID is required.'
+    
+    if (!form.phone.trim()) {
+      errors.phone = 'Phone Number is required.'
+    } else if (!/^\d{10}$/.test(form.phone.trim())) {
+      errors.phone = 'Phone Number must be 10 digits.'
+    }
+
+    if (!form.address.trim()) errors.address = 'Address is required.'
+    if (!form.district.trim()) errors.district = 'District is required.'
+    if (!form.state.trim()) errors.state = 'State is required.'
+    if (!form.disaster_date) errors.disaster_date = 'Date of Disaster is required.'
+    if (!form.affected_location.trim()) errors.affected_location = 'Affected Location is required.'
+
+    const estDamage = Number(form.estimated_damage)
+    if (!form.estimated_damage || isNaN(estDamage) || estDamage <= 0) {
+      errors.estimated_damage = 'Valid positive damage amount is required.'
+    }
+
+    if (!form.bank_account.trim()) {
+      errors.bank_account = 'Bank Account Number is required.'
+    } else if (!/^\d{9,18}$/.test(form.bank_account.trim())) {
+      errors.bank_account = 'Bank Account must be between 9 and 18 digits.'
+    }
+
+    if (!form.ifsc.trim()) {
+      errors.ifsc = 'IFSC Code is required.'
+    } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(form.ifsc.trim())) {
+      errors.ifsc = 'Invalid IFSC Code format (e.g. SBIN0001234).'
+    }
+
+    const reqAmt = Number(form.requested_amount)
+    if (!form.requested_amount || isNaN(reqAmt) || reqAmt <= 0) {
+      errors.requested_amount = 'Valid positive relief amount is required.'
+    }
+
+    if (evidenceList.length === 0) {
+      errors.evidence = 'At least 1 evidence document must be uploaded/attached.'
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  // Handle Application Submit (Module 1 POST /api/cases)
+  const handleSubmitApplication = async (e) => {
+    if (e) e.preventDefault()
+    setErrorMsg('')
+    setSuccessMsg('')
+    setSubmittedResult(null)
+
+    if (!validateForm()) {
+      setErrorMsg('Please resolve all validation errors before submitting.')
+      return
+    }
+
+    setLoading(true)
     try {
+      const payload = {
+        full_name: form.full_name.trim(),
+        citizen_id: form.citizen_id.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+        district: form.district.trim(),
+        state: form.state.trim(),
+        disaster_type: form.disaster_type,
+        disaster_date: form.disaster_date,
+        affected_location: form.affected_location.trim(),
+        damage_type: form.damage_type,
+        estimated_damage: Number(form.estimated_damage),
+        bank_account: form.bank_account.trim(),
+        ifsc: form.ifsc.trim().toUpperCase(),
+        requested_amount: Number(form.requested_amount),
+        evidence: evidenceList.map((ev) => ({
+          type: ev.type,
+          file_name: ev.file_name,
+          mime_type: ev.mime_type,
+          path_or_url: `/uploads/${ev.file_name}`,
+        })),
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/cases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          case_type: 'cghs_claim',
-          claimed_amount: Number(newCase.claimed_amount),
-          approved_rate: Number(newCase.approved_rate),
-          hospital_name: newCase.hospital_name,
-          beneficiary_id: newCase.beneficiary_id,
-          diagnosis: newCase.diagnosis,
-          description: newCase.description
-        })
+        body: JSON.stringify(payload),
       })
+
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.detail || 'Failed to create case')
+        throw new Error(err.detail || 'We couldn\'t submit the application. Please try again.')
+      }
+
+      const data = await res.json()
+      setSubmittedResult(data)
+      setActiveCaseRef(data.case_id)
+      setSuccessMsg(`Application created successfully! Persistent Case ID: ${data.case_id}`)
+      
+      // Auto fetch created case details
+      fetchCaseDetails(data.case_id)
+    } catch (err) {
+      setErrorMsg(err.message || 'We couldn\'t submit the application. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch details for Review tab
+  const fetchCaseDetails = async (caseIdToFetch) => {
+    const targetId = caseIdToFetch || activeCaseRef
+    if (!targetId) return
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}`)
+      if (!res.ok) {
+        throw new Error(`Case ${targetId} not found.`)
       }
       const data = await res.json()
-      setCaseData(data)
-      setActiveCaseRef(data.case_ref)
-      setLatestProposal(null)
-      setGatewayResult(null)
-      setSuccessMsg(`Created Case ${data.case_ref} successfully!`)
-      fetchLineage(data.case_ref)
-      fetchExplain(data.case_ref)
+      setCaseDetails(data)
+      setActiveCaseRef(data.case_id)
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
@@ -137,962 +264,1493 @@ export default function NiyantraWorkspace() {
     }
   }
 
-  // 3. POST /api/cases/{case_ref}/evidence
-  const addEvidence = async (e) => {
-    if (e) e.preventDefault()
-    if (!activeCaseRef) {
-      setErrorMsg('No active case selected. Please create or load a case first.')
+  // Module 2: Trigger AI Agent Review
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const handleRunAgentReview = async (simulateDisagreement = false) => {
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) {
+      setErrorMsg("No active case ID selected for review.")
       return
     }
-    setLoading(true)
+    setReviewLoading(true)
     setErrorMsg('')
     setSuccessMsg('')
     try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(activeCaseRef)}/evidence`, {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          evidence_type: evidenceType,
-          description: evidenceDesc,
-          source: evidenceSource,
-          payload: {
-            timestamp: new Date().toISOString(),
-            risk_flag: evidenceType
-          }
-        })
+        body: JSON.stringify({ simulate_disagreement: simulateDisagreement }),
       })
+
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.detail || 'Failed to add evidence')
+        throw new Error(err.detail || 'Failed to execute AI Agent Review.')
       }
-      const data = await res.json()
-      setSuccessMsg(`Evidence added! New Risk Score: ${data.risk_score} (${data.autonomy_level})`)
-      fetchCaseDetails(activeCaseRef)
+
+      setSuccessMsg(
+        simulateDisagreement
+          ? 'AI Agent Review executed (Disagreement Scenario Simulated).'
+          : 'AI Agent Review completed successfully!'
+      )
+      await fetchCaseDetails(targetId)
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
-      setLoading(false)
+      setReviewLoading(false)
     }
   }
 
-  // 4. POST /api/cases/{case_ref}/propose
-  const requestProposal = async (e) => {
-    if (e) e.preventDefault()
-    if (!activeCaseRef) {
-      setErrorMsg('No active case selected.')
+  // Module 3: Trigger Risk Engine & Autonomy Controller
+  const [riskLoading, setRiskLoading] = useState(false)
+  const handleRunRiskEvaluation = async () => {
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) {
+      setErrorMsg('No active case selected for risk evaluation.')
       return
     }
-    setLoading(true)
+    setRiskLoading(true)
     setErrorMsg('')
     setSuccessMsg('')
-    setGatewayResult(null)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(activeCaseRef)}/propose`, {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/risk/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action_type: proposalAction })
       })
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.detail || 'Proposal generation failed')
+        throw new Error(err.detail || 'Risk evaluation failed.')
       }
       const data = await res.json()
-      setLatestProposal(data)
-      setSuccessMsg(`AI Agent generated proposal: "${data.action_type}" (Confidence: ${(data.confidence_score * 100).toFixed(0)}%)`)
-      fetchCaseDetails(activeCaseRef)
+      setSuccessMsg(`Risk evaluation complete. Score: ${data.data.risk_score}/100 (${data.data.risk_level}). Autonomy: ${data.data.autonomy_level}.`)
+      await fetchCaseDetails(targetId)
+      setActiveTab('Risk')
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
-      setLoading(false)
+      setRiskLoading(false)
     }
   }
 
-  // 5. POST /api/cases/{case_ref}/execute
-  const executeProposal = async (e) => {
-    if (e) e.preventDefault()
-    if (!activeCaseRef) {
-      setErrorMsg('No active case selected.')
+  // Module 4: Histories + Field Inspection Simulator
+  const [riskHistory, setRiskHistory] = useState([])
+  const [autonomyHistory, setAutonomyHistory] = useState([])
+  const [eventLoading, setEventLoading] = useState(false)
+
+  const fetchHistories = async (caseId) => {
+    if (!caseId) return
+    try {
+      const [rh, ah] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(caseId)}/risk/history`).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(caseId)}/autonomy/history`).then(r => r.ok ? r.json() : []),
+      ])
+      setRiskHistory(rh)
+      setAutonomyHistory(ah)
+    } catch (_) { /* silent */ }
+  }
+
+  const handleSimulateFieldInspection = async (e) => {
+    e.preventDefault()
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) {
+      setErrorMsg('No active case selected. Load a case first.')
       return
     }
-    setLoading(true)
+    setEventLoading(true)
     setErrorMsg('')
     setSuccessMsg('')
     try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(activeCaseRef)}/execute`, {
+      const payload = {
+        submitter_type: eventForm.submitterType,
+        submitted_by: eventForm.submitterType === 'OFFICER' ? 'Officer John Doe' : 'Public Citizen',
+        event_type: eventForm.submitterType === 'OFFICER' ? 'FIELD_INSPECTION_RECEIVED' : 'PUBLIC_OBSERVATION',
+        description: eventForm.description,
+        location: eventForm.location,
+        damage_finding: eventForm.damageFinding,
+        evidence_files: eventForm.evidenceFiles,
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposal_id: latestProposal ? latestProposal.proposal_id : ''
-        })
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.detail || 'Tool Gateway execution failed')
+        throw new Error(err.detail || 'Event submission failed.')
       }
       const data = await res.json()
-      setGatewayResult(data)
-      if (data.status === 'executed') {
-        setSuccessMsg(`Tool Gateway EXECUTED action. Risk: ${data.risk_score} (${data.autonomy_level})`)
-      } else if (data.status === 'pending_approval') {
-        setSuccessMsg(`Tool Gateway placed action in PENDING APPROVAL. Risk: ${data.risk_score} (${data.autonomy_level})`)
+      if (data.idempotent) {
+        setSuccessMsg('This event was already processed (idempotency enforced). No duplicate records created.')
+      } else if (data.submitter_type === 'PUBLIC') {
+        setSuccessMsg(`Public event submitted successfully. Event ID: ${data.event_id}. Status is PENDING verification.`)
       } else {
-        setSuccessMsg(`Tool Gateway BLOCKED action. Reason: ${data.reason}`)
+        const conflictMsg = data.conflict_detected
+          ? ` Evidence conflict detected: AI assessed ${data.ai_damage_level} damage, field report says ${data.field_damage_level}.` : ''
+        const autonomyMsg = data.autonomy_changed
+          ? ` Autonomy: ${data.before.autonomy} → ${data.after.autonomy}.` : ''
+        setSuccessMsg(`Officer event processed. Risk: ${data.before.risk} → ${data.after.risk}.${conflictMsg}${autonomyMsg} Action: ${data.after.action}.`)
       }
-      fetchCaseDetails(activeCaseRef)
+      await fetchCaseDetails(targetId)
+      await fetchHistories(targetId)
+      setActiveTab('Progress')
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
-      setLoading(false)
+      setEventLoading(false)
     }
   }
 
-  // 6. POST /api/cases/{case_ref}/approve
-  const handleHumanApproval = async (approved) => {
-    if (!activeCaseRef) {
-      setErrorMsg('No active case selected.')
-      return
-    }
-    setLoading(true)
+  const handleVerifyEvent = async (eventId) => {
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) return
+    setEventLoading(true)
     setErrorMsg('')
     setSuccessMsg('')
     try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(activeCaseRef)}/approve`, {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/events/${encodeURIComponent(eventId)}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          approved: approved,
-          notes: approvalNotes,
-          human_id: humanId
-        })
+          verified_by: 'Officer Jane Doe',
+          notes: 'Verified via portal',
+        }),
       })
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.detail || 'Approval request failed')
+        throw new Error(err.detail || 'Event verification failed.')
       }
       const data = await res.json()
-      setSuccessMsg(data.message)
+      if (data.already_verified) {
+         setSuccessMsg(data.message)
+      } else {
+        const conflictMsg = data.conflict_detected
+          ? ` Evidence conflict detected: AI assessed ${data.ai_damage_level} damage, field report says ${data.field_damage_level}.` : ''
+        const autonomyMsg = data.autonomy_changed
+          ? ` Autonomy: ${data.before.autonomy} → ${data.after.autonomy}.` : ''
+        setSuccessMsg(`Event verified. Risk: ${data.before.risk} → ${data.after.risk}.${conflictMsg}${autonomyMsg} Action: ${data.after.action}.`)
+      }
+      await fetchCaseDetails(targetId)
+      await fetchHistories(targetId)
+      setActiveTab('Progress')
+    } catch (err) {
+      setErrorMsg(err.message)
+    } finally {
+      setEventLoading(false)
+    }
+  }
+
+  const [eventForm, setEventForm] = useState({
+    submitterType: 'PUBLIC',
+    description: '',
+    location: '',
+    damageFinding: 'MINOR',
+    evidenceFiles: ['simulated_field_photo_1.jpg'],
+  })
+
+  const handleContinueToReview = () => {
+    setActiveTab('Review')
+    if (activeCaseRef) {
       fetchCaseDetails(activeCaseRef)
-    } catch (err) {
-      setErrorMsg(err.message)
-    } finally {
-      setLoading(false)
     }
   }
 
-  // 7. GET /api/cases/{case_ref}/lineage
-  const fetchLineage = async (caseRefToFetch) => {
-    const ref = caseRefToFetch || activeCaseRef
-    if (!ref) return
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(ref)}/lineage`)
-      if (res.ok) {
-        const data = await res.json()
-        setLineageData(data)
-      }
-    } catch (err) {
-      console.error('Lineage fetch error:', err)
-    }
-  }
-
-  // 8. GET /api/cases/{case_ref}/explain
-  const fetchExplain = async (caseRefToFetch) => {
-    const ref = caseRefToFetch || activeCaseRef
-    if (!ref) return
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(ref)}/explain`)
-      if (res.ok) {
-        const data = await res.json()
-        setNarrativeData(data)
-      }
-    } catch (err) {
-      console.error('Explain fetch error:', err)
-    }
-  }
-
-  // 9. POST /api/demo/scenario/{scenarioName}
-  const loadDemoScenario = async (scenarioName) => {
-    setLoading(true)
-    setErrorMsg('')
-    setSuccessMsg('')
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/demo/scenario/${scenarioName}`, {
-        method: 'POST'
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || 'Failed to load demo scenario')
-      }
-      const data = await res.json()
-      setSuccessMsg(data.message)
-      if (data.instructions) {
-        setDemoInstructions(data.instructions)
-      }
-      if (data.case_ref) {
-        setActiveCaseRef(data.case_ref)
-        setLatestProposal(null)
-        setGatewayResult(null)
-        fetchCaseDetails(data.case_ref)
-      }
-    } catch (err) {
-      setErrorMsg(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 10. POST /api/demo/reset
-  const resetDemoState = async () => {
-    setLoading(true)
-    setErrorMsg('')
-    setSuccessMsg('')
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/demo/reset`, { method: 'POST' })
-      if (!res.ok) throw new Error('Reset failed')
-      const data = await res.json()
-      setCaseData(null)
-      setActiveCaseRef('')
-      setLineageData([])
-      setNarrativeData(null)
-      setLatestProposal(null)
-      setGatewayResult(null)
-      setDemoInstructions([])
-      setSuccessMsg(data.message)
-    } catch (err) {
-      setErrorMsg(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Helper badge color calculator
-  const getAutonomyBadgeStyle = (level) => {
-    switch (level) {
-      case 'L4': return { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0', name: 'L4 - Fully Autonomous' }
-      case 'L3': return { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', name: 'L3 - Audited Autonomous' }
-      case 'L2': return { bg: '#fffbebe', color: '#b45309', border: '#fde68a', name: 'L2 - Human Approval Required' }
-      case 'L1': return { bg: '#fff7ed', color: '#c2410c', border: '#ffedd5', name: 'L1 - Recommendation Only' }
-      case 'L0': return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', name: 'L0 - Blocked' }
-      default: return { bg: '#f3f4f6', color: '#4b5563', border: '#e5e7eb', name: level || 'N/A' }
+  // Fetch histories whenever switching to Progress tab
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId)
+    if (tabId === 'Progress' && (caseDetails?.case_id || activeCaseRef)) {
+      fetchHistories(caseDetails?.case_id || activeCaseRef)
     }
   }
 
   return (
-    <>
-      <section className="section" style={{ minHeight: '80vh', paddingTop: '40px', paddingBottom: '60px' }}>
-        <div className="container-large">
+    <section className="section" style={{ minHeight: '80vh', paddingTop: '30px', paddingBottom: '60px', fontFamily: "Calibri, 'Segoe UI', Candara, Segoe, Optima, Arial, sans-serif" }}>
+      <div className="container-large">
 
-          {/* Connection Status & Demo Controls Bar */}
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '16px 24px',
-              marginBottom: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '16px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: isBackendConnected ? '#10b981' : '#ef4444',
-                  boxShadow: isBackendConnected ? '0 0 8px #10b981' : '0 0 8px #ef4444',
-                }}
-              />
-              <span style={{ fontSize: '14px', fontWeight: '600', color: '#000433' }}>
-                Backend: {isBackendConnected ? `Connected (${API_BASE_URL})` : 'Offline (Start uvicorn)'}
+        {/* Top Header Connection Bar */}
+        <div style={topBarStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+            {activeCaseRef && (
+              <span style={{ fontSize: '13px', background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '6px', fontWeight: '700' }}>
+                Active Case: {activeCaseRef}
               </span>
-              {!isBackendConnected && (
-                <button
-                  onClick={checkBackendHealth}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '12px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    background: '#f8fafc',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Retry Connection
-                </button>
-              )}
-            </div>
-
-            {/* Quick Demo Scenarios */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: '#718096' }}>Demo Scenarios:</span>
-              <button
-                onClick={() => loadDemoScenario('scenario1_clean')}
-                style={btnStyleSecondary}
-                title="Low risk case (< 20 risk, L4)"
-              >
-                1. Clean (L4)
-              </button>
-              <button
-                onClick={() => loadDemoScenario('scenario2_medium')}
-                style={btnStyleSecondary}
-                title="Medium risk case (40-65 risk, L2)"
-              >
-                2. Medium (L2)
-              </button>
-              <button
-                onClick={() => loadDemoScenario('scenario3_high')}
-                style={btnStyleSecondary}
-                title="High risk rate mismatch (65-85 risk, L1)"
-              >
-                3. High (L1)
-              </button>
-              <button
-                onClick={() => loadDemoScenario('scenario4_critical')}
-                style={btnStyleSecondary}
-                title="Critical multi-factor anomaly (> 85 risk, L0)"
-              >
-                4. Critical (L0)
-              </button>
-              <button
-                onClick={() => loadDemoScenario('live_demo')}
-                style={btnStylePrimary}
-              >
-                ⚡ Live Demo Flow
-              </button>
-              <button
-                onClick={resetDemoState}
-                style={{ ...btnStyleSecondary, color: '#ef4444', borderColor: '#fca5a5' }}
-              >
-                Reset System
-              </button>
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* Alert Banners */}
-          {errorMsg && (
-            <div
-              style={{
-                padding: '12px 16px',
-                marginBottom: '20px',
-                borderRadius: '8px',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#991b1b',
-                fontSize: '14px',
-                fontWeight: '500',
-              }}
+        {/* Global Error and Success Alerts */}
+        {errorMsg && (
+          <div style={{ ...alertErrorStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{errorMsg}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMsg('')}
+              style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', fontSize: '18px', fontWeight: '700', lineHeight: 1, padding: '0 4px', marginLeft: '12px' }}
+              title="Dismiss alert"
             >
-              ⚠️ {errorMsg}
+              ×
+            </button>
+          </div>
+        )}
+        {successMsg && (
+          <div style={{ ...alertSuccessStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{successMsg}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMsg('')}
+              style={{ background: 'none', border: 'none', color: '#166534', cursor: 'pointer', fontSize: '18px', fontWeight: '700', lineHeight: 1, padding: '0 4px', marginLeft: '12px' }}
+              title="Dismiss alert"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Main Grid */}
+        <div className="workspace-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '24px', marginTop: '20px' }}>
+          
+          {/* Left Sidebar */}
+          <aside style={sidebarBoxStyle}>
+            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#000433', marginBottom: '16px', paddingBottom: '10px', borderBottom: '1px solid #e2e8f0' }}>
+              NIYANTRA Workflow
+            </h3>
+
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {WORKSPACE_SECTIONS.map((sec) => {
+                const isSelected = activeTab === sec.id
+                return (
+                  <li key={sec.id}>
+                    <button
+                      onClick={() => handleTabChange(sec.id)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        border: isSelected ? '1px solid #0087CC' : '1px solid transparent',
+                        background: isSelected ? 'rgba(0, 135, 204, 0.08)' : 'transparent',
+                        color: isSelected ? '#0087CC' : '#4a5568',
+                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <span>{sec.label}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {/* Quick Case Lookup */}
+            <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #edf2f7' }}>
+              <label style={labelStyle}>Lookup Existing Case</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. CASE-2026-0001"
+                  value={activeCaseRef}
+                  onChange={(e) => setActiveCaseRef(e.target.value)}
+                  style={inputStyle}
+                />
+                <button onClick={() => { setActiveTab('Review'); fetchCaseDetails(activeCaseRef) }} style={btnStylePrimary}>
+                  Go
+                </button>
+              </div>
             </div>
-          )}
+          </aside>
 
-          {successMsg && (
-            <div
-              style={{
-                padding: '12px 16px',
-                marginBottom: '20px',
-                borderRadius: '8px',
-                background: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                color: '#166534',
-                fontSize: '14px',
-                fontWeight: '500',
-              }}
-            >
-              ✅ {successMsg}
-            </div>
-          )}
+          {/* Right Main Workspace Content */}
+          <main style={mainWorkspaceStyle}>
 
-          {/* Demo Scenario Instructions Banner if returned */}
-          {demoInstructions.length > 0 && (
-            <div
-              style={{
-                padding: '16px',
-                marginBottom: '24px',
-                borderRadius: '10px',
-                background: '#f0f9ff',
-                border: '1px solid #bae6fd',
-                color: '#0369a1',
-              }}
-            >
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: '700' }}>
-                📋 Demo Scenario Instructions:
-              </h4>
-              <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', lineHeight: '1.6' }}>
-                {demoInstructions.map((step, idx) => (
-                  <li key={idx}>{step}</li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          <div className="workspace-grid">
-            {/* Left Sidebar */}
-            <aside
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-              }}
-            >
-              <h3
-                style={{
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: '#000433',
-                  marginBottom: '16px',
-                  paddingBottom: '12px',
-                  borderBottom: '1px solid #edf2f7',
-                }}
-              >
-                Documents
-              </h3>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {DOCUMENT_TYPES.map((docType) => {
-                  const isSelected = selectedDocumentType === docType
-                  return (
-                    <li key={docType}>
-                      <button
-                        onClick={() => setSelectedDocumentType(docType)}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          border: isSelected ? '1px solid #0087CC' : '1px solid transparent',
-                          background: isSelected ? 'rgba(0, 135, 204, 0.08)' : 'transparent',
-                          color: isSelected ? '#0087CC' : '#4a5568',
-                          fontWeight: isSelected ? '600' : '500',
-                          fontSize: '14px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        {docType}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-
-              {/* Active Case Quick Lookup Box */}
-              <div
-                style={{
-                  marginTop: '24px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid #edf2f7',
-                }}
-              >
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#000433', marginBottom: '8px' }}>
-                  Search Case
-                </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    placeholder="e.g. CGHS-2026-001"
-                    value={activeCaseRef}
-                    onChange={(e) => setActiveCaseRef(e.target.value)}
-                    style={inputStyle}
-                  />
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 1: FORM — DISASTER RELIEF APPLICATION (MODULE 1)               */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'Form' && (
+              <div>
+                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a', margin: 0, letterSpacing: '-0.02em', lineHeight: '1.3', opacity: 1, filter: 'none', WebkitFontSmoothing: 'antialiased' }}>
+                      Disaster Relief Application
+                    </h1>
+                    <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0 0' }}>
+                      Module 1: Intake & Case Registration (Flood Disaster Relief Intake)
+                    </p>
+                  </div>
                   <button
-                    onClick={() => fetchCaseDetails(activeCaseRef)}
-                    disabled={loading}
-                    style={btnStylePrimary}
+                    type="button"
+                    onClick={handleFillSampleData}
+                    style={{ ...btnStyleSecondary, background: '#f0f9ff', color: '#0284c7', borderColor: '#bae6fd', padding: '8px 16px', fontWeight: '700' }}
                   >
-                    Load
+                    Autofill Test Data
                   </button>
                 </div>
-              </div>
-            </aside>
 
-            {/* Right Main Content Workspace */}
-            <main
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '32px',
-                minHeight: '600px',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-              }}
-            >
-              {/* Header Info */}
-              <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <h1 className="heading-style-h1" style={{ fontSize: '2.25rem', color: '#000433', marginBottom: '4px' }}>
-                    NIYANTRA Workspace
-                  </h1>
-                  <p className="text-size-large" style={{ fontSize: '15px', color: '#718096', margin: 0 }}>
-                    {selectedDocumentType ? `Section: ${selectedDocumentType}` : 'Select a document type to begin.'}
-                  </p>
-                </div>
-
-                {/* Active Case Badge */}
-                {caseData && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#64748b', fontWeight: '600' }}>
-                        Ref: {caseData.case_ref}
-                      </div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                        Risk: {caseData.risk_score} / 100
-                      </div>
-                    </div>
-                    {(() => {
-                      const badge = getAutonomyBadgeStyle(caseData.autonomy_level)
-                      return (
-                        <span
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '20px',
-                            background: badge.bg,
-                            color: badge.color,
-                            border: `1px solid ${badge.border}`,
-                            fontSize: '13px',
-                            fontWeight: '700',
-                          }}
-                        >
-                          {badge.name}
-                        </span>
-                      )
-                    })()}
-                  </div>
-                )}
-              </div>
-
-              {/* Main Content Area Based on Tab Selection */}
-              <div
-                style={{
-                  flex: 1,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  background: '#fafbfe',
-                  padding: '24px',
-                  minHeight: '450px',
-                }}
-              >
-                {/* TAB 1: Case Files */}
-                {selectedDocumentType === 'Case Files' && (
-                  <div>
-                    <h3 style={sectionHeadingStyle}>CGHS Claim Case File</h3>
-
-                    {/* Case Creation Form */}
-                    <div style={cardBoxStyle}>
-                      <h4 style={cardHeaderStyle}>➕ Create New CGHS Medical Claim Case (POST /api/cases)</h4>
-                      <form onSubmit={createNewCase} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <div>
-                          <label style={labelStyle}>Beneficiary ID</label>
-                          <input
-                            type="text"
-                            value={newCase.beneficiary_id}
-                            onChange={(e) => setNewCase({ ...newCase, beneficiary_id: e.target.value })}
-                            style={inputStyle}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Hospital Name</label>
-                          <input
-                            type="text"
-                            value={newCase.hospital_name}
-                            onChange={(e) => setNewCase({ ...newCase, hospital_name: e.target.value })}
-                            style={inputStyle}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Claimed Amount (₹)</label>
-                          <input
-                            type="number"
-                            value={newCase.claimed_amount}
-                            onChange={(e) => setNewCase({ ...newCase, claimed_amount: e.target.value })}
-                            style={inputStyle}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Approved CGHS Rate (₹)</label>
-                          <input
-                            type="number"
-                            value={newCase.approved_rate}
-                            onChange={(e) => setNewCase({ ...newCase, approved_rate: e.target.value })}
-                            style={inputStyle}
-                            required
-                          />
-                        </div>
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={labelStyle}>Diagnosis / Medical Condition</label>
-                          <input
-                            type="text"
-                            value={newCase.diagnosis}
-                            onChange={(e) => setNewCase({ ...newCase, diagnosis: e.target.value })}
-                            style={inputStyle}
-                            required
-                          />
-                        </div>
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <button type="submit" disabled={loading} style={{ ...btnStylePrimary, width: '100%', padding: '12px' }}>
-                            {loading ? 'Processing...' : 'Submit Claim Case to Backend'}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                    {/* Active Case Details View */}
-                    {caseData ? (
-                      <div style={{ ...cardBoxStyle, marginTop: '20px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <h4 style={cardHeaderStyle}>📄 Case Details: {caseData.case_ref}</h4>
-                          <button onClick={() => fetchCaseDetails(caseData.case_ref)} style={btnStyleSecondary}>
-                            🔄 Refresh Case
-                          </button>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                          <div>
-                            <span style={labelStyle}>Status:</span>
-                            <div style={{ fontWeight: '700', color: '#000433' }}>{caseData.status}</div>
-                          </div>
-                          <div>
-                            <span style={labelStyle}>Claimed Amount:</span>
-                            <div style={{ fontWeight: '700', color: '#000433' }}>₹{caseData.claimed_amount?.toLocaleString()}</div>
-                          </div>
-                          <div>
-                            <span style={labelStyle}>Approved Rate:</span>
-                            <div style={{ fontWeight: '700', color: '#000433' }}>₹{caseData.approved_rate?.toLocaleString()}</div>
-                          </div>
-                          <div>
-                            <span style={labelStyle}>Hospital:</span>
-                            <div style={{ fontWeight: '600' }}>{caseData.hospital_name}</div>
-                          </div>
-                          <div>
-                            <span style={labelStyle}>Beneficiary:</span>
-                            <div style={{ fontWeight: '600' }}>{caseData.beneficiary_id}</div>
-                          </div>
-                          <div>
-                            <span style={labelStyle}>Diagnosis:</span>
-                            <div style={{ fontWeight: '600' }}>{caseData.diagnosis}</div>
-                          </div>
-                        </div>
-
-                        {/* Triggered Policy Rules */}
-                        {caseData.policy_triggers && caseData.policy_triggers.length > 0 && (
-                          <div style={{ marginTop: '12px', padding: '12px', background: '#fffbebe', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                            <strong style={{ color: '#92400e', fontSize: '13px' }}>⚠️ Triggered Policy Rules:</strong>
-                            <ul style={{ margin: '6px 0 0 0', paddingLeft: '20px', fontSize: '13px', color: '#78350f' }}>
-                              {caseData.policy_triggers.map((rule, i) => (
-                                <li key={i}>{rule}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p style={{ color: '#64748b', fontStyle: 'italic', marginTop: '16px' }}>
-                        No case loaded yet. Create a case above or pick a Demo Scenario from the top bar.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* TAB 2: Evidence */}
-                {selectedDocumentType === 'Evidence' && (
-                  <div>
-                    <h3 style={sectionHeadingStyle}>Evidence & Anomaly Recording</h3>
-
-                    {/* Add Evidence Form */}
-                    <div style={cardBoxStyle}>
-                      <h4 style={cardHeaderStyle}>🔬 Add Risky Evidence to Case (POST /api/cases/{'{ref}'}/evidence)</h4>
-                      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px' }}>
-                        Adding evidence automatically triggers the backend Risk Engine to recalculate the 5-factor risk score and update the Autonomy Level in real time.
+                {/* SUBMISSION CONFIRMATION STATE */}
+                {submittedResult ? (
+                  <div style={cardBoxStyle}>
+                    <div style={{ textAlign: 'center', padding: '24px 12px' }}>
+                      <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#166534', margin: '0 0 8px 0' }}>
+                        APPLICATION SUBMITTED
+                      </h2>
+                      <p style={{ fontSize: '14px', color: '#475569', marginBottom: '24px' }}>
+                        Your application has been logged into the NIYANTRA immutable database.
                       </p>
 
-                      <form onSubmit={addEvidence} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', maxW: '600px', margin: '0 auto 28px auto', background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                         <div>
-                          <label style={labelStyle}>Active Case</label>
-                          <input type="text" value={activeCaseRef || 'No case loaded'} readOnly style={{ ...inputStyle, background: '#f1f5f9' }} />
+                          <div style={labelStyle}>CASE ID</div>
+                          <div style={{ fontSize: '16px', fontWeight: '800', color: '#0087CC' }}>{submittedResult.case_id}</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>STATUS</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#000433' }}>{submittedResult.status}</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>STAGE</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#475569' }}>{submittedResult.current_stage}</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>RISK SCORE</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#eab308' }}>PENDING</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>AUTONOMY LEVEL</div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#eab308' }}>PENDING</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>NEXT STEP</div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#2563eb' }}>AI REVIEW</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                        <button onClick={handleContinueToReview} style={{ ...btnStylePrimary, padding: '12px 24px', fontSize: '15px' }}>
+                          Continue to Review →
+                        </button>
+                        <button onClick={handleResetForm} style={btnStyleSecondary}>
+                          Submit Another Application
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* APPLICATION FORM */
+                  <form onSubmit={handleSubmitApplication} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                    {/* SECTION A: CITIZEN INFORMATION */}
+                    <div style={cardBoxStyle}>
+                      <h3 style={cardHeaderStyle}>Section A — Citizen Information</h3>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div>
+                          <label style={labelStyle}>Full Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Rahul Sharma"
+                            value={form.full_name}
+                            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                            style={validationErrors.full_name ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.full_name && <span style={errorTextStyle}>{validationErrors.full_name}</span>}
                         </div>
 
                         <div>
-                          <label style={labelStyle}>Evidence Type (Risk Anomaly Preset)</label>
+                          <label style={labelStyle}>Citizen ID *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. CTZ-884920"
+                            value={form.citizen_id}
+                            onChange={(e) => setForm({ ...form, citizen_id: e.target.value })}
+                            style={validationErrors.citizen_id ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.citizen_id && <span style={errorTextStyle}>{validationErrors.citizen_id}</span>}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>Phone Number *</label>
+                          <input
+                            type="text"
+                            placeholder="10 digit mobile number"
+                            value={form.phone}
+                            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                            style={validationErrors.phone ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.phone && <span style={errorTextStyle}>{validationErrors.phone}</span>}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>District *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Kamrup Metro"
+                            value={form.district}
+                            onChange={(e) => setForm({ ...form, district: e.target.value })}
+                            style={validationErrors.district ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.district && <span style={errorTextStyle}>{validationErrors.district}</span>}
+                        </div>
+
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label style={labelStyle}>Address *</label>
+                          <input
+                            type="text"
+                            placeholder="Full residential address"
+                            value={form.address}
+                            onChange={(e) => setForm({ ...form, address: e.target.value })}
+                            style={validationErrors.address ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.address && <span style={errorTextStyle}>{validationErrors.address}</span>}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>State *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Assam"
+                            value={form.state}
+                            onChange={(e) => setForm({ ...form, state: e.target.value })}
+                            style={validationErrors.state ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.state && <span style={errorTextStyle}>{validationErrors.state}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION B: DISASTER INFORMATION */}
+                    <div style={cardBoxStyle}>
+                      <h3 style={cardHeaderStyle}>Section B — Disaster Information</h3>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div>
+                          <label style={labelStyle}>Disaster Type *</label>
                           <select
-                            value={evidenceType}
-                            onChange={(e) => {
-                              setEvidenceType(e.target.value)
-                              if (e.target.value === 'rate_mismatch') setEvidenceDesc('Claimed amount exceeds approved CGHS rate card limit')
-                              if (e.target.value === 'missing_document') setEvidenceDesc('Discharge summary or itemized hospital bill missing')
-                              if (e.target.value === 'duplicate_claim') setEvidenceDesc('Duplicate claim submission detected for beneficiary within 30 days')
-                              if (e.target.value === 'beneficiary_conflict') setEvidenceDesc('Beneficiary status conflict or identity mismatch flag')
-                              if (e.target.value === 'clean') setEvidenceDesc('Verified supporting documentation attached')
-                            }}
+                            value={form.disaster_type}
+                            onChange={(e) => setForm({ ...form, disaster_type: e.target.value })}
                             style={inputStyle}
                           >
-                            <option value="rate_mismatch">rate_mismatch (High Risk Anomaly)</option>
-                            <option value="missing_document">missing_document (Documentation Anomaly)</option>
-                            <option value="duplicate_claim">duplicate_claim (High Risk Fraud Anomaly)</option>
-                            <option value="beneficiary_conflict">beneficiary_conflict (Identity Anomaly)</option>
-                            <option value="clean">clean (Verified Document)</option>
+                            <option value="Flood">Flood (Primary Scenario)</option>
+                            <option value="Cyclone">Cyclone</option>
+                            <option value="Earthquake">Earthquake</option>
+                            <option value="Landslide">Landslide</option>
                           </select>
                         </div>
 
                         <div>
-                          <label style={labelStyle}>Description</label>
+                          <label style={labelStyle}>Date of Disaster *</label>
                           <input
-                            type="text"
-                            value={evidenceDesc}
-                            onChange={(e) => setEvidenceDesc(e.target.value)}
-                            style={inputStyle}
-                            required
+                            type="date"
+                            value={form.disaster_date}
+                            onChange={(e) => setForm({ ...form, disaster_date: e.target.value })}
+                            style={validationErrors.disaster_date ? inputErrorStyle : inputStyle}
                           />
+                          {validationErrors.disaster_date && <span style={errorTextStyle}>{validationErrors.disaster_date}</span>}
                         </div>
 
                         <div>
-                          <label style={labelStyle}>Source</label>
+                          <label style={labelStyle}>Affected Location *</label>
                           <input
                             type="text"
-                            value={evidenceSource}
-                            onChange={(e) => setEvidenceSource(e.target.value)}
+                            placeholder="e.g. Ward 4 Riverbank Colony"
+                            value={form.affected_location}
+                            onChange={(e) => setForm({ ...form, affected_location: e.target.value })}
+                            style={validationErrors.affected_location ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.affected_location && <span style={errorTextStyle}>{validationErrors.affected_location}</span>}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>Damage Type *</label>
+                          <select
+                            value={form.damage_type}
+                            onChange={(e) => setForm({ ...form, damage_type: e.target.value })}
                             style={inputStyle}
-                            required
+                          >
+                            <option value="House">House Damage</option>
+                            <option value="Agriculture">Agriculture / Crop Loss</option>
+                            <option value="Livelihood">Livelihood Loss</option>
+                            <option value="Other">Other Property Damage</option>
+                          </select>
+                        </div>
+
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label style={labelStyle}>Estimated Damage Amount (₹) *</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 80000"
+                            value={form.estimated_damage}
+                            onChange={(e) => setForm({ ...form, estimated_damage: e.target.value })}
+                            style={validationErrors.estimated_damage ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.estimated_damage && <span style={errorTextStyle}>{validationErrors.estimated_damage}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION C: BANK / RELIEF INFORMATION */}
+                    <div style={cardBoxStyle}>
+                      <h3 style={cardHeaderStyle}>Section C — Bank & Relief Information</h3>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div>
+                          <label style={labelStyle}>Bank Account Number *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 918273645012"
+                            value={form.bank_account}
+                            onChange={(e) => setForm({ ...form, bank_account: e.target.value })}
+                            style={validationErrors.bank_account ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.bank_account && <span style={errorTextStyle}>{validationErrors.bank_account}</span>}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>IFSC Code *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. SBIN0001234"
+                            value={form.ifsc}
+                            onChange={(e) => setForm({ ...form, ifsc: e.target.value })}
+                            style={validationErrors.ifsc ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.ifsc && <span style={errorTextStyle}>{validationErrors.ifsc}</span>}
+                        </div>
+
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label style={labelStyle}>Requested Relief Amount (₹) *</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 25000"
+                            value={form.requested_amount}
+                            onChange={(e) => setForm({ ...form, requested_amount: e.target.value })}
+                            style={validationErrors.requested_amount ? inputErrorStyle : inputStyle}
+                          />
+                          {validationErrors.requested_amount && <span style={errorTextStyle}>{validationErrors.requested_amount}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION D: EVIDENCE UPLOAD */}
+                    <div style={cardBoxStyle}>
+                      <h3 style={cardHeaderStyle}>Section D — Evidence Attachment</h3>
+                      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px' }}>
+                        Attach supporting evidence documents (Identity proof, Damage photos, Property deeds).
+                      </p>
+
+                      {validationErrors.evidence && <div style={alertErrorStyle}>{validationErrors.evidence}</div>}
+
+                      {/* Evidence List */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                        {evidenceList.map((ev, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{ev.file_name}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>Type: {ev.type} | Source: {ev.source}</div>
+                              </div>
+                            </div>
+                            <button type="button" onClick={() => handleRemoveEvidence(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: '700' }}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add Custom Evidence Form */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap', paddingTop: '12px', borderTop: '1px dashed #cbd5e1' }}>
+                        <div style={{ flex: 1, minWidth: '180px' }}>
+                          <label style={labelStyle}>Document Type</label>
+                          <select value={newEvType} onChange={(e) => setNewEvType(e.target.value)} style={inputStyle}>
+                            <option value="identity_doc">Identity Document</option>
+                            <option value="property_doc">Property / Address Document</option>
+                            <option value="damage_photo">Damage Photograph</option>
+                            <option value="supporting_doc">Additional Supporting Document</option>
+                          </select>
+                        </div>
+
+                        <div style={{ flex: 2, minWidth: '220px' }}>
+                          <label style={labelStyle}>File Name / Attachment</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. house_damage_photo1.jpg"
+                            value={newEvFileName}
+                            onChange={(e) => setNewEvFileName(e.target.value)}
+                            style={inputStyle}
                           />
                         </div>
 
-                        <button type="submit" disabled={loading || !activeCaseRef} style={btnStylePrimary}>
-                          {loading ? 'Submitting Evidence...' : 'Inject Evidence to Backend'}
+                        <button type="button" onClick={handleAddEvidence} style={btnStyleSecondary}>
+                          + Attach Document
                         </button>
-                      </form>
+                      </div>
                     </div>
 
-                    {/* Attached Evidence List */}
-                    {caseData && caseData.evidence_list && (
-                      <div style={{ ...cardBoxStyle, marginTop: '20px' }}>
-                        <h4 style={cardHeaderStyle}>📋 Evidence History ({caseData.evidence_list.length} Items)</h4>
-                        {caseData.evidence_list.length === 0 ? (
-                          <p style={{ color: '#94a3b8', fontSize: '13px' }}>No evidence recorded yet.</p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {caseData.evidence_list.map((ev, i) => (
-                              <div key={i} style={{ padding: '12px', background: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <strong style={{ color: '#0087CC', fontSize: '14px' }}>{ev.evidence_type}</strong>
-                                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Source: {ev.source}</span>
-                                </div>
-                                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#334155' }}>{ev.description}</p>
-                              </div>
-                            ))}
+                    {/* COMPACT APPLICATION SUMMARY */}
+                    <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '16px' }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '700', color: '#0369a1' }}>
+                        Application Summary Preview
+                      </h4>
+                      <div style={{ fontSize: '13px', color: '#0c4a6e', lineHeight: '1.6' }}>
+                        <div><strong>Applicant:</strong> {form.full_name || '—'} (ID: {form.citizen_id || '—'})</div>
+                        <div><strong>Disaster:</strong> {form.disaster_type} ({form.affected_location || '—'}, {form.district || '—'})</div>
+                        <div><strong>Estimated Damage:</strong> ₹{form.estimated_damage ? Number(form.estimated_damage).toLocaleString() : '0'}</div>
+                        <div><strong>Requested Relief:</strong> ₹{form.requested_amount ? Number(form.requested_amount).toLocaleString() : '0'}</div>
+                        <div><strong>Evidence Attached:</strong> {evidenceList.length} files</div>
+                      </div>
+                    </div>
+
+                    {/* SUBMIT CTA */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      style={{
+                        ...btnStylePrimary,
+                        padding: '14px 28px',
+                        fontSize: '16px',
+                        fontWeight: '800',
+                        width: '100%',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      {loading ? 'Submitting Application...' : 'Submit Relief Application'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 2: REVIEW CASE (MODULE 2 — AI AGENT REVIEW & EVIDENCE ANALYSIS) */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'Review' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#000433', margin: 0 }}>
+                      AI Agent Review & Evidence Package
+                    </h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
+                      Module 2: Autonomous Multi-Agent Verification (Identity, Eligibility & Evidence Agents)
+                    </p>
+                  </div>
+                  {caseDetails && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => handleRunAgentReview(false)}
+                        disabled={reviewLoading}
+                        style={{ ...btnStylePrimary, padding: '10px 18px', fontSize: '13px' }}
+                      >
+                        {reviewLoading ? 'Running Agents...' : 'Run AI Agent Review'}
+                      </button>
+                      <button
+                        onClick={() => handleRunAgentReview(true)}
+                        disabled={reviewLoading}
+                        style={{ ...btnStyleSecondary, borderColor: '#f59e0b', color: '#b45309' }}
+                      >
+                        Test Agent Disagreement
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {caseDetails ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Case Header Card */}
+                    <div style={cardBoxStyle}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' }}>PERSISTENT CASE ID</span>
+                          <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#0087CC', margin: 0 }}>{caseDetails.case_id}</h3>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ padding: '6px 12px', background: '#e0f2fe', color: '#0369a1', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
+                            Stage: {caseDetails.current_stage}
+                          </span>
+                          <span style={{ padding: '6px 12px', background: caseDetails.status === 'READY_FOR_RISK_EVALUATION' ? '#dcfce7' : '#fef3c7', color: caseDetails.status === 'READY_FOR_RISK_EVALUATION' ? '#166534' : '#92400e', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
+                            Status: {caseDetails.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Consensus Status Indicator */}
+                      {caseDetails.agent_consensus && caseDetails.agent_consensus !== 'PENDING' && (
+                        <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #edf2f7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>
+                            Multi-Agent Consensus Signal:
                           </div>
-                        )}
+                          <span style={{
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            background: caseDetails.agent_consensus === 'FULL_CONSENSUS' ? '#f0fdf4' : '#fffbeb',
+                            color: caseDetails.agent_consensus === 'FULL_CONSENSUS' ? '#166534' : '#b45309',
+                            border: caseDetails.agent_consensus === 'FULL_CONSENSUS' ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                          }}>
+                            {caseDetails.agent_consensus === 'FULL_CONSENSUS' ? 'FULL CONSENSUS (All Agents Verified)' : 'PARTIAL DISAGREEMENT (Preserved for Module 3)'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* AI AGENT REVIEW CARDS */}
+                    {caseDetails.agent_results && caseDetails.agent_results.length > 0 ? (
+                      <div>
+                        <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#000433', marginBottom: '14px' }}>
+                          Structured Agent Evidence Package ({caseDetails.agent_results.length} Agents Evaluated)
+                        </h3>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                          {caseDetails.agent_results.map((ag) => {
+                            const isPass = ['VERIFIED', 'ELIGIBLE', 'DAMAGE_DETECTED'].includes(ag.status)
+                            const confidencePct = Math.round(ag.confidence * 100)
+
+                            return (
+                              <div key={ag.result_id} style={{ ...cardBoxStyle, borderLeft: isPass ? '4px solid #22c55e' : '4px solid #f59e0b', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                  {/* Header */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', color: '#0f172a' }}>
+                                      {ag.agent_name.replace('_', ' ')}
+                                    </h4>
+                                    <span style={{
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      background: isPass ? '#dcfce7' : '#fef3c7',
+                                      color: isPass ? '#15803d' : '#b45309',
+                                    }}>
+                                      {ag.status}
+                                    </span>
+                                  </div>
+
+                                  {/* Confidence Meter */}
+                                  <div style={{ marginBottom: '12px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', fontWeight: '600', marginBottom: '4px' }}>
+                                      <span>Confidence Signal</span>
+                                      <span>{confidencePct}%</span>
+                                    </div>
+                                    <div style={{ width: '100%', background: '#e2e8f0', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${confidencePct}%`, background: isPass ? '#22c55e' : '#f59e0b', height: '100%' }} />
+                                    </div>
+                                  </div>
+
+                                  {/* Damage level if present */}
+                                  {ag.damage_level && (
+                                    <div style={{ fontSize: '12px', color: '#475569', marginBottom: '8px' }}>
+                                      <strong>Damage Level:</strong> {ag.damage_level}
+                                    </div>
+                                  )}
+
+                                  {/* Findings List */}
+                                  <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                                    <strong>Findings & Evidence Checked:</strong>
+                                    {ag.findings && ag.findings.map((f, fi) => (
+                                      <div key={fi} style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '11px' }}>[{f.type}]</div>
+                                        <div>{f.description}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Card Footer Provenance */}
+                                <div style={{ paddingTop: '10px', borderTop: '1px dashed #e2e8f0', fontSize: '11px', color: '#64748b' }}>
+                                  <div><strong>Action:</strong> <span style={{ color: '#0369a1', fontWeight: '700' }}>{ag.recommended_action}</span></div>
+                                  {ag.evidence_ids && ag.evidence_ids.length > 0 && (
+                                    <div style={{ marginTop: '2px' }}>
+                                      <strong>Evidence Refs:</strong> {ag.evidence_ids.join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Prompt to trigger review */
+                      <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '36px 20px', background: '#f8fafc', border: '1px dashed #cbd5e1' }}>
+                        <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 8px 0' }}>
+                          AI Agent Review Pending
+                        </h4>
+                        <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '500px', margin: '0 auto 20px auto' }}>
+                          Case `{caseDetails.case_id}` is stored and ready for autonomous agent review. Trigger the Agent Orchestrator to execute Identity, Eligibility, and Evidence Agents.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                          <button onClick={() => handleRunAgentReview(false)} disabled={reviewLoading} style={{ ...btnStylePrimary, padding: '12px 24px', fontSize: '14px' }}>
+                            {reviewLoading ? 'Executing Agents...' : 'Run AI Agent Review'}
+                          </button>
+                          <button onClick={() => handleRunAgentReview(true)} disabled={reviewLoading} style={{ ...btnStyleSecondary, borderColor: '#f59e0b', color: '#b45309' }}>
+                            Test Agent Disagreement Scenario
+                          </button>
+                        </div>
                       </div>
                     )}
-                  </div>
-                )}
 
-                {/* TAB 3: Rules & Governance (Proposals, Tool Gateway, Human Approval) */}
-                {selectedDocumentType === 'Rules & Regulations' && (
-                  <div>
-                    <h3 style={sectionHeadingStyle}>Governance, Proposal & Tool Gateway Flow</h3>
-
-                    {/* Core Principle Callout */}
-                    <div style={{ padding: '12px 16px', background: '#e0f2fe', borderRadius: '8px', border: '1px solid #7dd3fc', color: '#0369a1', marginBottom: '20px', fontSize: '13px' }}>
-                      <strong>🛡️ Core Governance Principle:</strong> AI agents can <em>propose</em> actions, but CANNOT directly execute them. Every action must pass through the <strong>Tool Gateway</strong>, which queries live risk scores before execution.
-                    </div>
-
-                    {/* STEP 1: AI Agent Proposal */}
-                    <div style={cardBoxStyle}>
-                      <h4 style={cardHeaderStyle}>1️⃣ AI Agent Proposal (POST /api/cases/{'{ref}'}/propose)</h4>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <select
-                          value={proposalAction}
-                          onChange={(e) => setProposalAction(e.target.value)}
-                          style={{ ...inputStyle, width: '220px' }}
-                        >
-                          <option value="settlement">settlement (High Impact: 90)</option>
-                          <option value="claim_submit">claim_submit (Medium Impact: 70)</option>
-                          <option value="update_status">update_status (Low Impact: 40)</option>
-                          <option value="check_rate">check_rate (Low Impact: 20)</option>
-                          <option value="verify_beneficiary">verify_beneficiary (Read Only: 10)</option>
-                          <option value="read_case">read_case (Read Only: 5)</option>
-                        </select>
-                        <button onClick={requestProposal} disabled={loading || !activeCaseRef} style={btnStylePrimary}>
-                          Generate Proposal
-                        </button>
-                      </div>
-
-                      {latestProposal && (
-                        <div style={{ marginTop: '14px', padding: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>PROPOSAL CREATED ({latestProposal.proposal_id})</div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
-                            Action: {latestProposal.action_type} | Proposed Amount: ₹{latestProposal.proposed_amount?.toLocaleString() || 'N/A'}
-                          </div>
-                          <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 0 0' }}>
-                            Justification: {latestProposal.justification}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* STEP 2: Tool Gateway Execution */}
-                    <div style={{ ...cardBoxStyle, marginTop: '20px' }}>
-                      <h4 style={cardHeaderStyle}>2️⃣ Tool Gateway Dispatch (POST /api/cases/{'{ref}'}/execute)</h4>
-                      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px' }}>
-                        The Tool Gateway checks current case risk score and level (never cached auth).
-                      </p>
-                      <button onClick={executeProposal} disabled={loading || !activeCaseRef} style={{ ...btnStylePrimary, background: '#000433' }}>
-                        Submit Proposal to Tool Gateway
-                      </button>
-
-                      {gatewayResult && (
-                        <div
-                          style={{
-                            marginTop: '14px',
-                            padding: '14px',
-                            borderRadius: '6px',
-                            border: '1px solid',
-                            borderColor: gatewayResult.status === 'executed' ? '#a7f3d0' : gatewayResult.status === 'pending_approval' ? '#fde68a' : '#fecaca',
-                            background: gatewayResult.status === 'executed' ? '#ecfdf5' : gatewayResult.status === 'pending_approval' ? '#fffbebe' : '#fef2f2',
-                          }}
-                        >
-                          <strong style={{ fontSize: '14px', textTransform: 'uppercase', color: gatewayResult.status === 'executed' ? '#047857' : gatewayResult.status === 'pending_approval' ? '#b45309' : '#b91c1c' }}>
-                            Gateway Outcome: {gatewayResult.status}
-                          </strong>
-                          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#334155' }}>
-                            {gatewayResult.reason}
-                          </p>
-                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                            Risk Score: {gatewayResult.risk_score} | Level: {gatewayResult.autonomy_level}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* STEP 3: Human Approval for L2 */}
-                    <div style={{ ...cardBoxStyle, marginTop: '20px' }}>
-                      <h4 style={cardHeaderStyle}>3️⃣ Human Officer Override / Approval (POST /api/cases/{'{ref}'}/approve)</h4>
-                      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px' }}>
-                        Used when Tool Gateway returns `pending_approval` for L2 cases.
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                        <div>
-                          <label style={labelStyle}>Human Officer ID</label>
-                          <input type="text" value={humanId} onChange={(e) => setHumanId(e.target.value)} style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Approval Notes</label>
-                          <input type="text" value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} style={inputStyle} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '12px' }}>
-                        <button onClick={() => handleHumanApproval(true)} disabled={loading || !activeCaseRef} style={{ ...btnStylePrimary, background: '#10b981' }}>
-                          Approve Action
-                        </button>
-                        <button onClick={() => handleHumanApproval(false)} disabled={loading || !activeCaseRef} style={{ ...btnStyleSecondary, color: '#ef4444', borderColor: '#fca5a5' }}>
-                          Reject Action
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 4: Reports & Narrative Explainability */}
-                {selectedDocumentType === 'Reports' && (
-                  <div>
-                    <h3 style={sectionHeadingStyle}>Governance Narrative & Risk Breakdown</h3>
-                    
-                    {narrativeData ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        <div style={cardBoxStyle}>
-                          <h4 style={cardHeaderStyle}>📖 Narrative Explanation (GET /api/cases/{'{ref}'}/explain)</h4>
-                          <div
-                            style={{
-                              padding: '16px',
-                              background: '#ffffff',
-                              borderRadius: '8px',
-                              border: '1px solid #e2e8f0',
-                              fontSize: '14px',
-                              lineHeight: '1.7',
-                              color: '#1e293b',
-                              whiteSpace: 'pre-line'
-                            }}
-                          >
-                            {narrativeData.narrative}
-                          </div>
+                    {/* Application & Evidence Provenance Details */}
+                    {caseDetails.application && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Submitted Application & Evidence Provenance</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+                          <div><strong>Full Name:</strong> {caseDetails.application.full_name}</div>
+                          <div><strong>Citizen ID:</strong> {caseDetails.application.citizen_id}</div>
+                          <div><strong>Disaster Type:</strong> {caseDetails.application.disaster_type} ({caseDetails.application.disaster_date})</div>
+                          <div><strong>Location:</strong> {caseDetails.application.affected_location}, {caseDetails.application.district}</div>
+                          <div><strong>Estimated Damage:</strong> ₹{caseDetails.application.estimated_damage?.toLocaleString()}</div>
+                          <div><strong>Requested Relief:</strong> ₹{caseDetails.application.requested_amount?.toLocaleString()}</div>
                         </div>
 
-                        {narrativeData.risk_breakdown && (
-                          <div style={cardBoxStyle}>
-                            <h4 style={cardHeaderStyle}>📊 5-Factor Risk Weight Breakdown</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                              {Object.entries(narrativeData.risk_breakdown).map(([factor, score]) => (
-                                <div key={factor} style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                  <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'capitalize' }}>
-                                    {factor.replace('_', ' ')}
-                                  </div>
-                                  <div style={{ fontSize: '16px', fontWeight: '700', color: '#000433' }}>
-                                    {typeof score === 'number' ? score.toFixed(1) : score}
-                                  </div>
-                                </div>
+                        {caseDetails.evidence && (
+                          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #edf2f7' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', marginBottom: '8px' }}>LINKED EVIDENCE FILES ({caseDetails.evidence.length})</div>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                              {caseDetails.evidence.map((ev, i) => (
+                                <span key={i} style={{ padding: '6px 10px', background: '#f1f5f9', borderRadius: '6px', fontSize: '12px', border: '1px solid #e2e8f0', color: '#334155' }}>
+                                  <strong>{ev.evidence_id}:</strong> {ev.file_name} ({ev.type})
+                                </span>
                               ))}
                             </div>
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <p style={{ color: '#64748b', fontStyle: 'italic' }}>
-                        No case loaded. Create or pick a case to view explanations.
+                    )}
+
+                    {/* Module 3 Handoff — Run Risk Evaluation */}
+                    <div style={{
+                      padding: '16px 20px',
+                      background: caseDetails.current_stage === 'RISK_EVALUATED'
+                        ? '#f0fdf4' : caseDetails.current_stage === 'AI_REVIEW_COMPLETED'
+                        ? '#eff6ff' : '#fef3c7',
+                      border: caseDetails.current_stage === 'RISK_EVALUATED'
+                        ? '1px solid #bbf7d0' : caseDetails.current_stage === 'AI_REVIEW_COMPLETED'
+                        ? '1px solid #bfdbfe' : '1px solid #fde68a',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: caseDetails.current_stage === 'RISK_EVALUATED' ? '#166534' : caseDetails.current_stage === 'AI_REVIEW_COMPLETED' ? '#1e40af' : '#92400e' }}>
+                          {caseDetails.current_stage === 'RISK_EVALUATED'
+                            ? 'Module 3 Complete — Risk & Autonomy Evaluated'
+                            : caseDetails.current_stage === 'AI_REVIEW_COMPLETED'
+                            ? 'Module 2 Complete — Ready for Module 3 Risk Evaluation'
+                            : 'Agent Review not yet run'}
+                        </div>
+                        <div style={{ fontSize: '12px', marginTop: '3px', opacity: 0.85, color: '#475569' }}>
+                          Stage: <strong>{caseDetails.current_stage}</strong> | Status: <strong>{caseDetails.status}</strong>
+                          {caseDetails.current_risk != null && (
+                            <> | Risk: <strong>{caseDetails.current_risk}/100</strong> | Autonomy: <strong>{caseDetails.current_autonomy}</strong></>
+                          )}
+                        </div>
+                      </div>
+                      {caseDetails.current_stage === 'AI_REVIEW_COMPLETED' && (
+                        <button
+                          onClick={handleRunRiskEvaluation}
+                          disabled={riskLoading}
+                          style={{ ...btnStylePrimary, background: '#1d4ed8', padding: '10px 20px', fontSize: '13px', fontWeight: '700' }}
+                        >
+                          {riskLoading ? 'Evaluating Risk...' : 'Evaluate Risk (Module 3)'}
+                        </button>
+                      )}
+                      {caseDetails.current_stage === 'RISK_EVALUATED' && (
+                        <button
+                          onClick={() => setActiveTab('Risk')}
+                          style={{ ...btnStylePrimary, background: '#166534', padding: '10px 20px', fontSize: '13px' }}
+                        >
+                          View Risk Assessment
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={cardBoxStyle}>
+                    <p style={{ color: '#64748b', fontStyle: 'italic' }}>
+                      No active case loaded. Please submit an application in the <strong>Form</strong> tab or load a Case ID on the left sidebar.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 3: RISK ENGINE (MODULE 3)                                      */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'Risk' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#000433', margin: 0 }}>NIYANTRA Risk Assessment</h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>Module 3: Dynamic Risk Engine & Autonomy Controller</p>
+                  </div>
+                  {caseDetails && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      {(caseDetails.current_stage === 'AI_REVIEW_COMPLETED' || caseDetails.current_stage === 'RISK_EVALUATED') && (
+                        <button
+                          onClick={handleRunRiskEvaluation}
+                          disabled={riskLoading}
+                          style={{ ...btnStylePrimary, background: '#1d4ed8', padding: '10px 18px', fontSize: '13px' }}
+                        >
+                          {riskLoading ? 'Evaluating...' : caseDetails.current_stage === 'RISK_EVALUATED' ? 'Re-Evaluate Risk' : 'Evaluate Risk'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {caseDetails?.risk ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                    {/* Case Reference */}
+                    <div style={{ ...cardBoxStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>PERSISTENT CASE ID</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#0087CC' }}>{caseDetails.case_id}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ padding: '5px 12px', background: '#e0f2fe', color: '#0369a1', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                          Stage: {caseDetails.current_stage}
+                        </span>
+                        <span style={{ padding: '5px 12px', background: '#dcfce7', color: '#166534', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                          Status: {caseDetails.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Risk Score + Autonomy Level — Hero Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                      {/* Risk Score */}
+                      <div style={{ ...cardBoxStyle, textAlign: 'center', borderTop: `4px solid ${ caseDetails.risk.risk_level === 'LOW' ? '#22c55e' : caseDetails.risk.risk_level === 'MEDIUM' ? '#f59e0b' : '#ef4444' }` }}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>RISK SCORE</div>
+                        <div style={{ fontSize: '42px', fontWeight: '900', color: caseDetails.risk.risk_level === 'LOW' ? '#166534' : caseDetails.risk.risk_level === 'MEDIUM' ? '#b45309' : '#991b1b', lineHeight: 1 }}>
+                          {caseDetails.risk.risk_score}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>/ 100</div>
+                        {/* Score bar */}
+                        <div style={{ width: '100%', background: '#e2e8f0', height: '8px', borderRadius: '4px', overflow: 'hidden', marginTop: '12px' }}>
+                          <div style={{ width: `${caseDetails.risk.risk_score}%`, height: '100%', background: caseDetails.risk.risk_level === 'LOW' ? '#22c55e' : caseDetails.risk.risk_level === 'MEDIUM' ? '#f59e0b' : '#ef4444', borderRadius: '4px', transition: 'width 0.6s ease' }} />
+                        </div>
+                      </div>
+
+                      {/* Risk Level */}
+                      <div style={{ ...cardBoxStyle, textAlign: 'center', borderTop: `4px solid ${ caseDetails.risk.risk_level === 'LOW' ? '#22c55e' : caseDetails.risk.risk_level === 'MEDIUM' ? '#f59e0b' : '#ef4444' }` }}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>RISK LEVEL</div>
+                        <div style={{ fontSize: '28px', fontWeight: '900', color: caseDetails.risk.risk_level === 'LOW' ? '#166534' : caseDetails.risk.risk_level === 'MEDIUM' ? '#b45309' : '#991b1b' }}>
+                          {caseDetails.risk.risk_level}
+                        </div>
+                        <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                          {caseDetails.risk.risk_level === 'LOW' ? 'Within autonomous threshold' : caseDetails.risk.risk_level === 'MEDIUM' ? 'Partial authorization required' : 'Human review required'}
+                        </div>
+                      </div>
+
+                      {/* Autonomy Level */}
+                      {caseDetails.autonomy && (
+                        <div style={{ ...cardBoxStyle, textAlign: 'center', borderTop: `4px solid ${ caseDetails.autonomy.autonomy_level === 'L3' ? '#22c55e' : caseDetails.autonomy.autonomy_level === 'L2' ? '#f59e0b' : '#ef4444' }` }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>AUTONOMY LEVEL</div>
+                          <div style={{ fontSize: '28px', fontWeight: '900', color: caseDetails.autonomy.autonomy_level === 'L3' ? '#166534' : caseDetails.autonomy.autonomy_level === 'L2' ? '#b45309' : '#991b1b' }}>
+                            {caseDetails.autonomy.autonomy_level === 'L3' ? 'LEVEL 3' : caseDetails.autonomy.autonomy_level === 'L2' ? 'LEVEL 2' : 'LEVEL 1'}
+                          </div>
+                          <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                            {caseDetails.autonomy.autonomy_level === 'L3' ? 'High Autonomy' : caseDetails.autonomy.autonomy_level === 'L2' ? 'Controlled Autonomy' : 'Human Controlled'}
+                          </div>
+                          <div style={{ marginTop: '8px', fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '20px', display: 'inline-block', background: caseDetails.autonomy.autonomy_level === 'L3' ? '#dcfce7' : caseDetails.autonomy.autonomy_level === 'L2' ? '#fef3c7' : '#fee2e2', color: caseDetails.autonomy.autonomy_level === 'L3' ? '#166534' : caseDetails.autonomy.autonomy_level === 'L2' ? '#b45309' : '#991b1b' }}>
+                            {caseDetails.autonomy.autonomy_level === 'L3' ? 'AI ACTION PERMITTED' : caseDetails.autonomy.autonomy_level === 'L2' ? 'PARTIAL AUTHORIZATION' : 'HUMAN APPROVAL REQUIRED'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Risk Factor Breakdown */}
+                    {caseDetails.risk.risk_factors && caseDetails.risk.risk_factors.length > 0 && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Risk Factor Breakdown</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {caseDetails.risk.risk_factors.map((f, i) => (
+                            <div key={i} style={{ display: 'grid', gridTemplateColumns: '200px 1fr 80px 80px', gap: '12px', alignItems: 'center', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                              <div style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a' }}>{f.display}</div>
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>{f.raw_label}</div>
+                              <div style={{ width: '100%' }}>
+                                <div style={{ width: '100%', background: '#e2e8f0', height: '5px', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${Math.min(f.factor_risk, 100)}%`, height: '100%', background: f.contribution === 'LOW' ? '#22c55e' : f.contribution === 'MEDIUM' ? '#f59e0b' : '#ef4444', borderRadius: '3px' }} />
+                                </div>
+                              </div>
+                              <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '800', textAlign: 'center', background: f.contribution === 'LOW' ? '#dcfce7' : f.contribution === 'MEDIUM' ? '#fef3c7' : '#fee2e2', color: f.contribution === 'LOW' ? '#166534' : f.contribution === 'MEDIUM' ? '#b45309' : '#991b1b' }}>
+                                {f.contribution}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#94a3b8', borderTop: '1px solid #edf2f7', paddingTop: '10px' }}>
+                          Weighted formula: each factor contributes proportionally to its configured weight. Weights sum to 1.0.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Why This Score — Explanation */}
+                    <div style={{ ...cardBoxStyle, background: '#f8fafc', borderLeft: '4px solid #0087CC' }}>
+                      <h4 style={{ ...cardHeaderStyle, color: '#0369a1' }}>Why This Score?</h4>
+                      <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.65', margin: 0 }}>
+                        {caseDetails.risk.explanation}
                       </p>
+                    </div>
+
+                    {/* Autonomy Card */}
+                    {caseDetails.autonomy && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Current Autonomy Decision</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', marginBottom: '6px' }}>AI CAN DO</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {caseDetails.autonomy.allowed_actions.map((act, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#166534' }}>
+                                  <span style={{ fontWeight: '700' }}>✓</span> {act.replace(/_/g, ' ')}
+                                </div>
+                              ))}
+                              {caseDetails.autonomy.allowed_actions.length === 0 && (
+                                <div style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>No autonomous actions permitted.</div>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', marginBottom: '6px' }}>REQUIRES HUMAN APPROVAL</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {caseDetails.autonomy.restricted_actions.map((act, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#991b1b' }}>
+                                  <span style={{ fontWeight: '700' }}>—</span> {act.replace(/_/g, ' ')}
+                                </div>
+                              ))}
+                              {caseDetails.autonomy.restricted_actions.length === 0 && (
+                                <div style={{ fontSize: '13px', color: '#166534' }}>No restrictions. Human approval not currently required.</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #edf2f7', fontSize: '13px', color: '#475569' }}>
+                          <strong>Reason:</strong> {caseDetails.autonomy.reason}
+                        </div>
+                        {caseDetails.autonomy.previous_autonomy && caseDetails.autonomy.previous_autonomy !== caseDetails.autonomy.autonomy_level && (
+                          <div style={{ marginTop: '8px', fontSize: '12px', color: '#b45309', background: '#fef3c7', padding: '6px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                            Autonomy transition: <strong>{caseDetails.autonomy.previous_autonomy}</strong> → <strong>{caseDetails.autonomy.autonomy_level}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Decision Lineage Summary */}
+                    <div style={{ ...cardBoxStyle, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+                      <h4 style={{ ...cardHeaderStyle, color: '#0369a1' }}>Decision Lineage</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px', fontSize: '13px' }}>
+                        <div>
+                          <div style={labelStyle}>AGENT OUTPUTS</div>
+                          <div style={{ fontWeight: '700', color: '#0f172a' }}>{caseDetails.agent_results?.length || 0} Agents</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>{caseDetails.agent_consensus}</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>RISK FACTORS</div>
+                          <div style={{ fontWeight: '700', color: '#0f172a' }}>{caseDetails.risk.risk_factors?.length || 0} Factors</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>Weighted deterministic</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>RISK SCORE</div>
+                          <div style={{ fontWeight: '700', color: '#0f172a' }}>{caseDetails.risk.risk_score} / 100</div>
+                          <div style={{ fontSize: '12px', color: caseDetails.risk.risk_level === 'LOW' ? '#166534' : caseDetails.risk.risk_level === 'MEDIUM' ? '#b45309' : '#991b1b' }}>{caseDetails.risk.risk_level}</div>
+                        </div>
+                        <div>
+                          <div style={labelStyle}>AUTONOMY</div>
+                          <div style={{ fontWeight: '700', color: '#0f172a' }}>{caseDetails.autonomy?.autonomy_level || '—'}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>{caseDetails.autonomy?.autonomy_level === 'L3' ? 'High Autonomy' : caseDetails.autonomy?.autonomy_level === 'L2' ? 'Controlled' : caseDetails.autonomy?.autonomy_level === 'L1' ? 'Human Controlled' : '—'}</div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #bae6fd', fontSize: '12px', color: '#0369a1' }}>
+                        Risk ID: <strong>{caseDetails.risk.risk_id}</strong> | Decision ID: <strong>{caseDetails.autonomy?.decision_id || '—'}</strong>
+                      </div>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '40px 20px', background: '#f8fafc', border: '1px dashed #cbd5e1' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 8px 0' }}>Risk Evaluation Pending</h4>
+                    <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto 20px auto', lineHeight: '1.6' }}>
+                      {caseDetails
+                        ? caseDetails.current_stage === 'AI_REVIEW_COMPLETED'
+                          ? `Case ${caseDetails.case_id} has completed AI Agent Review and is ready for risk evaluation. Click below to run the Risk Engine.`
+                          : `Case ${caseDetails.case_id} must complete AI Agent Review (Module 2) before risk evaluation.`
+                        : 'Load a case in the Review tab first, then return here to evaluate risk.'}
+                    </p>
+                    {caseDetails?.current_stage === 'AI_REVIEW_COMPLETED' && (
+                      <button
+                        onClick={handleRunRiskEvaluation}
+                        disabled={riskLoading}
+                        style={{ ...btnStylePrimary, background: '#1d4ed8', padding: '12px 28px', fontSize: '14px', fontWeight: '700' }}
+                      >
+                        {riskLoading ? 'Evaluating Risk...' : 'Run Risk Evaluation'}
+                      </button>
                     )}
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* TAB 5: Policies & Lineage */}
-                {selectedDocumentType === 'Policies' && (
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 4: PROGRESS PIPELINE — MODULE 4 DEMO SCREEN                   */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'Progress' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
-                    <h3 style={sectionHeadingStyle}>Append-Only Decision Lineage Audit Log</h3>
+                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#000433', margin: 0 }}>Dynamic Evidence & Runtime Re-evaluation</h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>Module 4: External Events, Evidence Conflict Detection & Autonomy Re-assignment</p>
+                  </div>
+                  {caseDetails && (
+                    <button
+                      onClick={() => fetchHistories(caseDetails.case_id)}
+                      style={{ ...btnStyleSecondary, fontSize: '12px' }}
+                    >
+                      Refresh Histories
+                    </button>
+                  )}
+                </div>
 
+                {!caseDetails ? (
+                  <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '40px 20px', background: '#f8fafc', border: '1px dashed #cbd5e1' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 8px 0' }}>No Active Case</h4>
+                    <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Submit an application and complete Modules 1–3 first, then return here.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                    {/* Action State Banner — shown prominently when reauth required */}
+                    {caseDetails.action_state === 'REQUIRES_REAUTHORIZATION' && (
+                      <div style={{ padding: '16px 20px', background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#92400e' }}>ACTION REQUIRES RE-AUTHORIZATION</div>
+                          <div style={{ fontSize: '12px', color: '#78350f', marginTop: '3px' }}>
+                            Autonomy downgraded from {autonomyHistory.length >= 2 ? autonomyHistory[0].autonomy_level : caseDetails.current_autonomy} → {caseDetails.current_autonomy}. Previously permitted actions are suspended pending officer review.
+                          </div>
+                        </div>
+                        <span style={{ padding: '6px 14px', background: '#f59e0b', color: '#fff', borderRadius: '6px', fontSize: '12px', fontWeight: '800' }}>REQUIRES REAUTHORIZATION</span>
+                      </div>
+                    )}
+
+                    {/* LIVE CASE STATE — 4-cell summary */}
                     <div style={cardBoxStyle}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h4 style={{ ...cardHeaderStyle, margin: 0 }}>📜 Audit Trail Timeline (GET /api/cases/{'{ref}'}/lineage)</h4>
-                        <button onClick={() => fetchLineage(activeCaseRef)} style={btnStyleSecondary}>
-                          🔄 Refresh Log
-                        </button>
+                      <h4 style={cardHeaderStyle}>Live Case State</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+                        <div style={{ textAlign: 'center', padding: '14px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={labelStyle}>CURRENT RISK</div>
+                          <div style={{ fontSize: '28px', fontWeight: '900', color: caseDetails.current_risk <= 30 ? '#166534' : caseDetails.current_risk <= 60 ? '#b45309' : '#991b1b', lineHeight: 1 }}>{caseDetails.current_risk ?? '—'}</div>
+                          {caseDetails.current_risk != null && <div style={{ fontSize: '11px', color: '#94a3b8' }}>/ 100</div>}
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '14px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={labelStyle}>AUTONOMY</div>
+                          <div style={{ fontSize: '24px', fontWeight: '900', color: caseDetails.current_autonomy === 'L3' ? '#166534' : caseDetails.current_autonomy === 'L2' ? '#b45309' : '#991b1b' }}>
+                            {caseDetails.current_autonomy ?? '—'}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>{caseDetails.current_autonomy === 'L3' ? 'High Autonomy' : caseDetails.current_autonomy === 'L2' ? 'Controlled' : caseDetails.current_autonomy === 'L1' ? 'Human Controlled' : 'Pending'}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '14px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={labelStyle}>STAGE</div>
+                          <div style={{ fontSize: '11px', fontWeight: '800', color: '#0f172a', wordBreak: 'break-word', marginTop: '4px' }}>{caseDetails.current_stage}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '14px 10px', background: caseDetails.action_state === 'REQUIRES_REAUTHORIZATION' ? '#fef3c7' : caseDetails.action_state === 'PERMITTED' ? '#dcfce7' : '#f8fafc', borderRadius: '8px', border: caseDetails.action_state === 'REQUIRES_REAUTHORIZATION' ? '1px solid #fde68a' : caseDetails.action_state === 'PERMITTED' ? '1px solid #86efac' : '1px solid #e2e8f0' }}>
+                          <div style={labelStyle}>ACTION STATE</div>
+                          <div style={{ fontSize: '11px', fontWeight: '800', color: caseDetails.action_state === 'REQUIRES_REAUTHORIZATION' ? '#92400e' : caseDetails.action_state === 'PERMITTED' ? '#166534' : '#475569', marginTop: '4px', wordBreak: 'break-word' }}>
+                            {(caseDetails.action_state || 'PROPOSED').replace(/_/g, ' ')}
+                          </div>
+                        </div>
                       </div>
 
-                      {lineageData.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px' }}>No lineage records yet for this case.</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {lineageData.map((rec, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                padding: '12px 16px',
-                                background: '#ffffff',
-                                borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
-                                borderLeft: `4px solid ${rec.outcome === 'executed' ? '#10b981' : rec.outcome === 'blocked' ? '#ef4444' : '#0087CC'}`
-                              }}
+                      {/* Stage Pipeline Strip */}
+                      <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #edf2f7', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {[
+                          { label: 'Stage 1: Case Creation & Application Intake', done: true },
+                          { label: 'Stage 2: AI Agent Review & Evidence Package', done: ['AI_REVIEW_COMPLETED','RISK_EVALUATED','RUNTIME_REEVALUATION'].includes(caseDetails.current_stage) },
+                          { label: 'Stage 3: Risk Calculation & Autonomy Controller', done: ['RISK_EVALUATED','RUNTIME_REEVALUATION'].includes(caseDetails.current_stage), extra: caseDetails.current_risk != null ? `Score: ${caseDetails.current_risk}/100, Autonomy: ${caseDetails.current_autonomy}` : null },
+                          { label: 'Stage 4: Dynamic Evidence & Runtime Re-evaluation', done: caseDetails.current_stage === 'RUNTIME_REEVALUATION', extra: caseDetails.current_stage === 'RUNTIME_REEVALUATION' ? 'Module 4 — ACTIVE' : 'Module 4 — Pending' },
+                          { label: 'Stage 5: Tool Gateway & Officer Approval', done: false, extra: 'Module 5 — Pending' },
+                        ].map((s, i) => (
+                          <div key={i} style={{ padding: '10px 14px', background: s.done ? '#dcfce7' : '#f8fafc', border: s.done ? '1px solid #86efac' : '1px solid #cbd5e1', borderRadius: '6px', color: s.done ? '#166534' : '#64748b', fontWeight: s.done ? '700' : '400', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{s.label}</span>
+                            {s.extra && <span style={{ fontSize: '12px', opacity: 0.8 }}>{s.extra}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* EVIDENCE CONFLICT CARD */}
+                    {caseDetails.has_evidence_conflict && (
+                      <div style={{ ...cardBoxStyle, border: '2px solid #f59e0b', background: '#fffbeb' }}>
+                        <h4 style={{ ...cardHeaderStyle, color: '#b45309' }}>Evidence Conflict Detected</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          <div style={{ padding: '14px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '800', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>AI Agent Assessment</div>
+                            <div style={{ fontSize: '13px', color: '#0f172a' }}>
+                              <strong>Source:</strong> Evidence Agent (Module 2)<br />
+                              <strong>Damage Level:</strong> {caseDetails.agent_results?.find(a => a.agent_name === 'evidence_agent')?.damage_level || 'SEVERE'}<br />
+                              <strong>Confidence:</strong> {Math.round((caseDetails.agent_results?.find(a => a.agent_name === 'evidence_agent')?.confidence || 0.89) * 100)}%
+                            </div>
+                          </div>
+                          <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '800', color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Field Inspection Report</div>
+                            <div style={{ fontSize: '13px', color: '#0f172a' }}>
+                              <strong>Source:</strong> Field Inspection System<br />
+                              <strong>Damage Level:</strong> MINOR<br />
+                              <strong>Verification:</strong> CONFLICT
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '13px', color: '#78350f' }}>
+                          Both evidence sources are preserved. NIYANTRA does not automatically choose one source as correct. This conflict increased case risk and triggered re-evaluation.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* RISK HISTORY */}
+                    {riskHistory.length > 0 && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Risk Evaluation History</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                          {riskHistory.map((r, i) => (
+                            <div key={r.risk_id} style={{ display: 'grid', gridTemplateColumns: '28px 90px 120px 1fr', gap: '16px', alignItems: 'center', padding: '12px 16px', background: i % 2 === 0 ? '#f8fafc' : '#fff', borderBottom: '1px solid #edf2f7' }}>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '700' }}>#{i + 1}</div>
+                              <div>
+                                <div style={{ fontSize: '22px', fontWeight: '900', color: r.risk_level === 'LOW' ? '#166534' : r.risk_level === 'MEDIUM' ? '#b45309' : '#991b1b', lineHeight: 1 }}>{r.risk_score}</div>
+                                <div style={{ fontSize: '10px', color: '#64748b' }}>/ 100</div>
+                              </div>
+                              <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: '800', background: r.risk_level === 'LOW' ? '#dcfce7' : r.risk_level === 'MEDIUM' ? '#fef3c7' : '#fee2e2', color: r.risk_level === 'LOW' ? '#166534' : r.risk_level === 'MEDIUM' ? '#b45309' : '#991b1b', alignSelf: 'start', marginTop: '4px' }}>{r.risk_level}</span>
+                              <div style={{ fontSize: '12px', color: '#475569' }}>{r.explanation}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {riskHistory.length >= 2 && (
+                          <div style={{ marginTop: '12px', padding: '10px 16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', fontSize: '13px', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <span>Risk transition:</span>
+                            <strong style={{ color: '#166534' }}>{riskHistory[0].risk_score} ({riskHistory[0].risk_level})</strong>
+                            <span style={{ color: '#94a3b8' }}>→</span>
+                            <strong style={{ color: '#991b1b' }}>{riskHistory[riskHistory.length - 1].risk_score} ({riskHistory[riskHistory.length - 1].risk_level})</strong>
+                            <span style={{ padding: '2px 8px', background: '#fee2e2', color: '#991b1b', borderRadius: '4px', fontSize: '12px', fontWeight: '700' }}>
+                              +{(riskHistory[riskHistory.length - 1].risk_score - riskHistory[0].risk_score).toFixed(1)} pts
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* AUTONOMY HISTORY */}
+                    {autonomyHistory.length > 0 && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Autonomy Decision History</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {autonomyHistory.map((a, i) => (
+                            <div key={a.decision_id} style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '700', paddingTop: '2px', minWidth: '24px' }}>#{i + 1}</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                                  {a.previous_autonomy && a.previous_autonomy !== a.autonomy_level && (
+                                    <>
+                                      <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: '800', background: a.previous_autonomy === 'L3' ? '#dcfce7' : a.previous_autonomy === 'L2' ? '#fef3c7' : '#fee2e2', color: a.previous_autonomy === 'L3' ? '#166534' : a.previous_autonomy === 'L2' ? '#b45309' : '#991b1b' }}>{a.previous_autonomy}</span>
+                                      <span style={{ color: '#94a3b8', fontWeight: '700' }}>→</span>
+                                    </>
+                                  )}
+                                  <span style={{ padding: '3px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: '800', background: a.autonomy_level === 'L3' ? '#dcfce7' : a.autonomy_level === 'L2' ? '#fef3c7' : '#fee2e2', color: a.autonomy_level === 'L3' ? '#166534' : a.autonomy_level === 'L2' ? '#b45309' : '#991b1b' }}>{a.autonomy_level}</span>
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>— {a.autonomy_level === 'L3' ? 'High Autonomy' : a.autonomy_level === 'L2' ? 'Controlled Autonomy' : 'Human Controlled'}</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#475569' }}>{a.reason}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {autonomyHistory.length >= 2 && (
+                          <div style={{ marginTop: '12px', padding: '10px 16px', background: autonomyHistory[autonomyHistory.length - 1].autonomy_level === 'L1' ? '#fef2f2' : '#fef3c7', border: autonomyHistory[autonomyHistory.length - 1].autonomy_level === 'L1' ? '1px solid #fecaca' : '1px solid #fde68a', borderRadius: '6px', fontSize: '13px', color: '#78350f' }}>
+                            Autonomy transition: <strong>{autonomyHistory[0].autonomy_level}</strong> → <strong>{autonomyHistory[autonomyHistory.length - 1].autonomy_level}</strong>. New evidence changed AI authority. This demonstrates dynamic autonomy.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* WHY DID RISK CHANGE */}
+                    {caseDetails.risk && caseDetails.current_stage === 'RUNTIME_REEVALUATION' && (
+                      <div style={{ ...cardBoxStyle, background: '#f8fafc', borderLeft: '4px solid #f59e0b' }}>
+                        <h4 style={{ ...cardHeaderStyle, color: '#b45309' }}>Why Did Risk Change?</h4>
+                        <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.65', margin: 0 }}>
+                          {caseDetails.risk.explanation}
+                        </p>
+                        {caseDetails.has_evidence_conflict && (
+                          <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '13px', color: '#78350f' }}>
+                            New field inspection evidence contradicts the previous AI damage assessment. This increased the Process Anomalies risk factor significantly, pushing the total risk into the HIGH range and triggering autonomy downgrade.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CASE TIMELINE */}
+                    {caseDetails.events && caseDetails.events.length > 0 && (
+                      <div style={cardBoxStyle}>
+                        <h4 style={cardHeaderStyle}>Case Event Timeline</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                          {[...caseDetails.events].reverse().map((evt, i) => {
+                            const isConflict = evt.event_type === 'EVIDENCE_CONFLICT_DETECTED'
+                            const isReauth   = evt.event_type === 'ACTION_REAUTHORIZATION_REQUIRED'
+                            const isField    = evt.event_type === 'FIELD_INSPECTION_RECEIVED' || evt.event_type === 'PUBLIC_OBSERVATION'
+                            const isRisk     = evt.event_type === 'RISK_EVALUATED' || evt.event_type === 'RISK_REEVALUATED'
+                            const isAuto     = evt.event_type === 'AUTONOMY_ASSIGNED' || evt.event_type === 'AUTONOMY_CHANGED'
+                            const dotColor   = isConflict || isReauth ? '#f59e0b' : isField ? '#1d4ed8' : isRisk || isAuto ? '#0087CC' : '#22c55e'
+                            
+                            let details = null
+                            try {
+                              const meta = evt.metadata_json ? JSON.parse(evt.metadata_json) : {}
+                              if (isRisk) details = `Score: ${meta.risk_score} | Level: ${meta.risk_level}`
+                              else if (isAuto) details = `Assigned Level: ${meta.autonomy_level || meta.new_autonomy}`
+                              else if (isField) details = `Damage reported: ${meta.damage_level || meta.damage_finding} ${meta.verification_status ? `(${meta.verification_status})` : ''}`
+                              else if (isConflict) details = `AI assessed ${meta.ai_damage_level}, but field report found ${meta.field_damage_level}`
+                              else if (evt.event_type === 'AGENT_COMPLETED') details = `Confidence: ${meta.confidence ? Math.round(meta.confidence*100) + '%' : 'N/A'}`
+                              else if (evt.description) details = evt.description
+                            } catch (e) {}
+
+                            return (
+                              <div key={evt.event_id} style={{ display: 'flex', gap: '14px', padding: '10px 0', borderBottom: i < caseDetails.events.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '16px' }}>
+                                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dotColor, marginTop: '4px', flexShrink: 0 }} />
+                                  {i < caseDetails.events.length - 1 && <div style={{ width: '2px', flex: 1, background: '#e2e8f0', marginTop: '4px' }} />}
+                                </div>
+                                <div style={{ flex: 1, paddingBottom: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '800', color: dotColor }}>{evt.event_type.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8', padding: '2px 6px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>{evt.source.replace(/_/g, ' ')}</span>
+                                  </div>
+                                  {details && <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', fontWeight: '500' }}>{details}</div>}
+                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                                    {new Date(evt.created_at).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+              </div>
+            )}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 4.5: EVENT UPDATES (MODULE 4)                                  */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'EventUpdates' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#000433', margin: 0 }}>Event Updates</h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>Module 4: Submit new evidence & trigger re-evaluations.</p>
+                  </div>
+                </div>
+
+                {!caseDetails ? (
+                  <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '40px 20px', background: '#f8fafc', border: '1px dashed #cbd5e1' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 8px 0' }}>No Active Case</h4>
+                    <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Load a case first to submit events.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    
+                    {/* Submit Event Form */}
+                    <div style={cardBoxStyle}>
+                      <h4 style={cardHeaderStyle}>Submit New Event</h4>
+                      <form onSubmit={handleSimulateFieldInspection} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          <div>
+                            <label style={labelStyle}>Submitter Type</label>
+                            <select
+                              value={eventForm.submitterType}
+                              onChange={(e) => setEventForm({ ...eventForm, submitterType: e.target.value })}
+                              style={inputStyle}
                             >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
-                                <span><strong>Actor:</strong> {rec.actor}</span>
-                                <span>{new Date(rec.timestamp).toLocaleTimeString()}</span>
+                              <option value="PUBLIC">PUBLIC (Pending Verification)</option>
+                              <option value="OFFICER">OFFICER (Auto-Verified)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Observed Damage Level</label>
+                            <select
+                              value={eventForm.damageFinding}
+                              onChange={(e) => setEventForm({ ...eventForm, damageFinding: e.target.value })}
+                              style={inputStyle}
+                            >
+                              <option value="NONE">None</option>
+                              <option value="MINOR">Minor</option>
+                              <option value="MODERATE">Moderate</option>
+                              <option value="MAJOR">Major</option>
+                              <option value="SEVERE">Severe</option>
+                              <option value="UNKNOWN">Unknown</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Description / Notes</label>
+                          <textarea
+                            value={eventForm.description}
+                            onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                            style={{ ...inputStyle, minHeight: '80px' }}
+                            placeholder="Enter notes about the event..."
+                          />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Location</label>
+                          <input
+                            type="text"
+                            value={eventForm.location}
+                            onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                            style={inputStyle}
+                            placeholder="Location observed"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={eventLoading || !['RISK_EVALUATED','RUNTIME_REEVALUATION', 'REQUIRES_HUMAN_REVIEW', 'AI_REVIEW_COMPLETED'].includes(caseDetails.current_stage)}
+                          style={{ ...btnStylePrimary, padding: '12px 24px', fontSize: '14px', fontWeight: '700', alignSelf: 'flex-start', opacity: !['RISK_EVALUATED','RUNTIME_REEVALUATION', 'REQUIRES_HUMAN_REVIEW', 'AI_REVIEW_COMPLETED'].includes(caseDetails.current_stage) ? 0.5 : 1 }}
+                        >
+                          {eventLoading ? 'Submitting...' : 'Submit Event'}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Pending Events List for Verification */}
+                    <div style={cardBoxStyle}>
+                      <h4 style={cardHeaderStyle}>Pending Events (Requires Officer Verification)</h4>
+                      {caseDetails.events?.filter(e => {
+                         try {
+                           const meta = JSON.parse(e.metadata_json || "{}")
+                           return e.submitter_type === 'PUBLIC' && meta.verification_status === 'PENDING'
+                         } catch (err) {
+                           return false
+                         }
+                      }).length === 0 && caseDetails.events?.filter(e => e.submitter_type === 'PUBLIC' && e.verification_status === 'PENDING').length === 0 ? (
+                        <p style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', margin: 0 }}>No pending events.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {caseDetails.events?.filter(e => e.submitter_type === 'PUBLIC' && e.verification_status === 'PENDING').map((evt) => (
+                            <div key={evt.event_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400e' }}>Event ID: {evt.event_id}</div>
+                                <div style={{ fontSize: '12px', color: '#78350f' }}>{evt.description || 'No description provided'}</div>
+                                <div style={{ fontSize: '11px', color: '#92400e', marginTop: '4px' }}>Submitted By: {evt.submitted_by}</div>
                               </div>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', margin: '4px 0' }}>
-                                Event: {rec.event_type} | Action: {rec.action || 'N/A'} | Outcome: {rec.outcome}
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#475569' }}>
-                                {rec.details}
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                                Risk Score: {rec.risk_score} | Autonomy Level: {rec.autonomy_level}
-                              </div>
+                              <button
+                                onClick={() => handleVerifyEvent(evt.event_id)}
+                                disabled={eventLoading}
+                                style={{ ...btnStylePrimary, background: '#f59e0b', fontSize: '12px', padding: '8px 16px' }}
+                              >
+                                {eventLoading ? 'Verifying...' : 'Verify Event'}
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -1100,52 +1758,78 @@ export default function NiyantraWorkspace() {
                     </div>
                   </div>
                 )}
-
-                {/* TAB 6: Government Documents & Other */}
-                {(selectedDocumentType === 'Government Documents' || selectedDocumentType === 'Other Documents') && (
-                  <div>
-                    <h3 style={sectionHeadingStyle}>CGHS Official Policy & AI Governance Standards</h3>
-                    <div style={cardBoxStyle}>
-                      <h4 style={cardHeaderStyle}>🏛️ CGHS Governance Policy Reference</h4>
-                      <ul style={{ lineHeight: '1.8', fontSize: '14px', color: '#334155' }}>
-                        <li><strong>Standard CGHS Package Rate:</strong> ₹40,000 max for routine OPD/Procedural claims</li>
-                        <li><strong>Risk Autonomy Scale:</strong> L4 (&lt;20 risk), L3 (20-40 risk), L2 (40-65 risk), L1 (65-85 risk), L0 (&gt;85 risk)</li>
-                        <li><strong>Non-Negotiable Safety Rule:</strong> AI agents possess NO direct execution permissions over CGHS tool endpoints.</li>
-                        <li><strong>Dynamic Authority Revocation:</strong> Real-time risk triggers continuously restrict agent permissions as new evidence arrives.</li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
               </div>
-            </main>
-          </div>
+            )}
+
+
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 4: OFFICER REVIEW                                              */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'Officer Review' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#000433', marginBottom: '16px' }}>
+                  Officer Review Portal
+                </h2>
+                <div style={cardBoxStyle}>
+                  <p style={{ color: '#64748b', fontSize: '14px' }}>
+                    Human officer override and final sign-off portal. This will be connected when risk scoring triggers L2 (Human Approval Required) in later modules.
+                  </p>
+                </div>
+              </div>
+            )}
+
+          </main>
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   )
 }
 
-// ─── Inline Reusable Styles matching NIYANTRA theme ───────────────────────────
+// ─── Inline Reusable Styles ────────────────────────────────────────────────────
 
-const sectionHeadingStyle = {
-  fontSize: '18px',
-  fontWeight: '700',
-  color: '#000433',
-  marginBottom: '16px',
+const topBarStyle = {
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: '12px',
+  padding: '14px 20px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  flexWrap: 'wrap',
+  gap: '12px',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+}
+
+const sidebarBoxStyle = {
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: '12px',
+  padding: '20px',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+  height: 'fit-content',
+}
+
+const mainWorkspaceStyle = {
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: '12px',
+  padding: '28px',
+  minHeight: '600px',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
 }
 
 const cardBoxStyle = {
   background: '#ffffff',
   border: '1px solid #e2e8f0',
-  borderRadius: '8px',
+  borderRadius: '10px',
   padding: '20px',
 }
 
 const cardHeaderStyle = {
-  fontSize: '15px',
+  fontSize: '16px',
   fontWeight: '700',
   color: '#000433',
-  margin: '0 0 12px 0',
+  margin: '0 0 14px 0',
 }
 
 const labelStyle = {
@@ -1158,24 +1842,60 @@ const labelStyle = {
 
 const inputStyle = {
   width: '100%',
-  padding: '8px 12px',
+  padding: '10px 12px',
   fontSize: '14px',
   borderRadius: '6px',
   border: '1px solid #cbd5e1',
   outline: 'none',
   boxSizing: 'border-box',
+  fontFamily: 'inherit',
+}
+
+const inputErrorStyle = {
+  ...inputStyle,
+  borderColor: '#ef4444',
+  background: '#fef2f2',
+}
+
+const errorTextStyle = {
+  color: '#dc2626',
+  fontSize: '12px',
+  marginTop: '4px',
+  display: 'block',
+}
+
+const alertErrorStyle = {
+  padding: '12px 16px',
+  borderRadius: '8px',
+  background: '#fef2f2',
+  border: '1px solid #fecaca',
+  color: '#991b1b',
+  fontSize: '14px',
+  fontWeight: '500',
+  marginTop: '16px',
+}
+
+const alertSuccessStyle = {
+  padding: '12px 16px',
+  borderRadius: '8px',
+  background: '#f0fdf4',
+  border: '1px solid #bbf7d0',
+  color: '#166534',
+  fontSize: '14px',
+  fontWeight: '500',
+  marginTop: '16px',
 }
 
 const btnStylePrimary = {
   padding: '8px 16px',
   fontSize: '13px',
-  fontWeight: '600',
+  fontWeight: '700',
   borderRadius: '6px',
   border: 'none',
   background: '#0087CC',
   color: '#ffffff',
   cursor: 'pointer',
-  transition: 'opacity 0.2s ease',
+  fontFamily: 'inherit',
 }
 
 const btnStyleSecondary = {
@@ -1187,4 +1907,5 @@ const btnStyleSecondary = {
   background: '#ffffff',
   color: '#475569',
   cursor: 'pointer',
+  fontFamily: 'inherit',
 }
