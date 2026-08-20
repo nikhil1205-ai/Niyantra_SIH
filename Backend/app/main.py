@@ -18,10 +18,10 @@ from app.api import cases, evidence, proposals, approvals, lineage, demo
 
 # ─── Application ──────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="NIYANTRA - AI Governance System for CGHS",
+    title="NIYANTRA - AI Governance System for PM-JAY",
     description=(
         "NIYANTRA demonstrates risk-based autonomy control for AI agents "
-        "in government health claim processing. "
+        "in PM-JAY health claim processing. "
         "AI agents can propose but never execute. "
         "The Tool Gateway enforces governance on every action."
     ),
@@ -33,7 +33,7 @@ app = FastAPI(
 # ─── CORS - Allow the React frontend to call this API ────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Prototype only - lock down in production
+    allow_origins=["*"],  # Prototype only
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,13 +42,13 @@ app.add_middleware(
 # ─── Startup ──────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def on_startup():
-    """Create SQLite tables on startup. No migrations needed."""
+    """Create SQLite tables on startup."""
     create_db_and_tables()
-    print("✓ NIYANTRA backend started")
+    print("✓ NIYANTRA PM-JAY backend started")
     print("✓ SQLite database initialized")
     print("✓ API docs: http://127.0.0.1:8000/docs")
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+# ─── Standard Routes ──────────────────────────────────────────────────────────
 app.include_router(cases.router)
 app.include_router(evidence.router)
 app.include_router(proposals.router)
@@ -56,14 +56,23 @@ app.include_router(approvals.router)
 app.include_router(lineage.router)
 app.include_router(demo.router)
 
+# ─── PM-JAY Alias Routers ─────────────────────────────────────────────────────
+app.include_router(cases.router, prefix="/api/pmjay", tags=["PM-JAY Cases"])
+app.include_router(evidence.router, prefix="/api/pmjay", tags=["PM-JAY Evidence"])
+app.include_router(proposals.router, prefix="/api/pmjay", tags=["PM-JAY Proposals"])
+app.include_router(approvals.router, prefix="/api/pmjay", tags=["PM-JAY Approvals"])
+app.include_router(lineage.router, prefix="/api/pmjay", tags=["PM-JAY Lineage"])
+app.include_router(demo.router, prefix="/api/pmjay", tags=["PM-JAY Demo"])
+
 
 @app.get("/", tags=["Health"])
 def root():
     """Health check endpoint."""
     return {
-        "system": "NIYANTRA",
+        "system": "NIYANTRA PM-JAY PROTOTYPE",
         "status": "running",
-        "version": "1.0.0-prototype",
+        "notice": "Synthetic Data — Demonstration Only",
+        "version": "1.0.0-pmjay-prototype",
         "docs": "/docs",
         "governance_principle": (
             "AI agents propose. Tool Gateway authorizes. "
@@ -77,12 +86,14 @@ def health():
     """Detailed health check."""
     return {
         "status": "healthy",
+        "system": "NIYANTRA PM-JAY PROTOTYPE",
         "components": {
             "database": "SQLite - connected",
-            "risk_engine": "deterministic - ready",
-            "autonomy_controller": "ready",
-            "policy_engine": "CGHS-POLICY-V1 loaded",
+            "risk_engine": "5-dimension PM-JAY engine - ready",
+            "autonomy_controller": "L0-L4 controller - ready",
+            "policy_engine": "PMJAY-POLICY-V1 loaded",
             "tool_gateway": "ready",
-            "simulated_cghs": "ready",
+            "agents": "5 PM-JAY Verification Agents ready",
         },
     }
+

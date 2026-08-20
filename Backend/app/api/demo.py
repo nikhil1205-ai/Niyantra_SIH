@@ -102,29 +102,45 @@ def run_scenario(scenario_name: str, session: Session = Depends(get_session)):
 
 
 def _scenario_clean(session: Session) -> dict:
-    """Scenario 1: Clean low-risk claim. Settlement should be allowed."""
+    """Scenario 1: Low Risk PM-JAY Claim."""
     case_data = CaseCreate(
-        domain="CGHS",
-        beneficiary_id="BEN-SC1-001",
-        hospital_id="HOSP-AIIMS-001",
-        procedure_code="CGHS-ORTHO-001",
-        claimed_amount=38000.0,   # WITHIN the approved rate
+        case_ref="PMJAY-DEMO-001",
+        domain="PM-JAY",
+        beneficiary_id="BEN-SYN-001",
+        beneficiary_name="Rahul Sharma",
+        age=46,
+        gender="Male",
+        state="Madhya Pradesh",
+        district="Bhopal",
+        hospital_id="HOSP-SYN-101",
+        hospital_name="Demo Care Hospital",
+        hospital_type="Empaneled Private",
+        package_code="PKG-SYN-204",
+        package_name="Demo Surgical Package",
+        procedure_code="PKG-SYN-204",
+        admission_date="2026-08-10",
+        discharge_date="2026-08-15",
+        claimed_amount=40000.0,
         approved_rate=40000.0,
+        eligibility_status="verified",
+        identity_status="verified",
+        hospital_status="empaneled",
+        package_status="approved",
+        claim_status="submitted",
     )
     case_read = create_case(case_data, session)
     case_ref = case_read.case_ref
 
-    # Add clean evidence
-    _add_evidence_and_recalc(case_ref, "normal", "All documents verified and present.", session)
-
+    _add_evidence_and_recalc(case_ref, "normal", "All synthetic eligibility, identity, and clinical documents verified.", session)
     case = get_case_db(case_ref, session)
+
     return {
         "scenario": "scenario1_clean",
-        "description": "Clean low-risk CGHS claim. Claimed ₹38,000 within approved ₹40,000.",
+        "description": "Clean Low-Risk PM-JAY Claim. Claimed ₹40,000 matches approved package tariff.",
         "case_ref": case_ref,
-        "expected_risk": "~15",
-        "expected_autonomy": "L4 or L3",
-        "expected_outcome": "Settlement ALLOWED",
+        "expected_risk": "15.0 (LOW)",
+        "expected_autonomy": "L3 / L4",
+        "expected_outcome": "Claim Authorization ALLOWED automatically",
         "current_risk": case.risk_score,
         "current_autonomy": case.autonomy_level,
         "current_status": case.case_status,
@@ -133,149 +149,181 @@ def _scenario_clean(session: Session) -> dict:
 
 
 def _scenario_medium(session: Session) -> dict:
-    """Scenario 2: Medium risk. Human approval needed."""
+    """Scenario 2: Moderate Risk PM-JAY Claim."""
     case_data = CaseCreate(
-        domain="CGHS",
-        beneficiary_id="BEN-SC2-001",
-        hospital_id="HOSP-SAFDARJUNG-001",
-        procedure_code="CGHS-CARD-002",
-        claimed_amount=48000.0,   # Slightly over approved rate
-        approved_rate=40000.0,
+        case_ref="PMJAY-DEMO-002",
+        domain="PM-JAY",
+        beneficiary_id="BEN-SYN-002",
+        beneficiary_name="Priya Patel",
+        age=38,
+        gender="Female",
+        state="Gujarat",
+        district="Ahmedabad",
+        hospital_id="HOSP-SYN-102",
+        hospital_name="City Multi-Specialty Hospital",
+        hospital_type="Empaneled Private",
+        package_code="PKG-SYN-301",
+        package_name="Cardiology Stent Procedure",
+        procedure_code="PKG-SYN-301",
+        admission_date="2026-08-11",
+        discharge_date="2026-08-14",
+        claimed_amount=55000.0,
+        approved_rate=45000.0,
+        eligibility_status="verified",
+        identity_status="verified",
+        hospital_status="empaneled",
+        package_status="approved",
+        claim_status="submitted",
     )
     case_read = create_case(case_data, session)
     case_ref = case_read.case_ref
 
-    # Add a mild anomaly
-    _add_evidence_and_recalc(case_ref, "rate_mismatch",
-                             "Claimed ₹48,000 exceeds approved rate ₹40,000 by ₹8,000 (20%).", session)
-
+    _add_evidence_and_recalc(case_ref, "rate_mismatch", "Claimed amount ₹55,000 exceeds approved package tariff ₹45,000 by ₹10,000.", session)
     case = get_case_db(case_ref, session)
+
     return {
         "scenario": "scenario2_medium",
-        "description": "Medium-risk claim. Small rate overage requires human approval.",
+        "description": "Moderate-Risk PM-JAY Claim. Small package tariff overage.",
         "case_ref": case_ref,
-        "expected_risk": "~40-50",
+        "expected_risk": "35.0 (MODERATE)",
         "expected_autonomy": "L2",
-        "expected_outcome": "Settlement PENDING APPROVAL - human must approve",
+        "expected_outcome": "Claim Authorization PENDING APPROVAL - Human sign-off required",
         "current_risk": case.risk_score,
         "current_autonomy": case.autonomy_level,
         "current_status": case.case_status,
-        "next_step": (
-            f"POST /api/cases/{case_ref}/propose → "
-            f"POST /api/cases/{case_ref}/execute (gets pending_approval) → "
-            f"POST /api/cases/{case_ref}/approve"
-        ),
+        "next_step": f"POST /api/cases/{case_ref}/propose → POST /api/cases/{case_ref}/execute → POST /api/cases/{case_ref}/approve",
     }
 
 
 def _scenario_high(session: Session) -> dict:
-    """
-    Scenario 3: HIGH RISK - CGHS rate mismatch.
-    
-    This is the most important demo scenario.
-    Approved rate ₹40,000 but hospital claimed ₹65,000.
-    Risk ~65-75, Autonomy L1, Settlement BLOCKED.
-    """
+    """Scenario 3: High Risk PM-JAY Claim."""
     case_data = CaseCreate(
-        domain="CGHS",
-        beneficiary_id="BEN-SC3-001",
-        hospital_id="HOSP-PRIVATE-003",
-        procedure_code="CGHS-NEURO-003",
-        claimed_amount=65000.0,   # 62.5% over approved rate!
-        approved_rate=40000.0,
+        case_ref="PMJAY-DEMO-003",
+        domain="PM-JAY",
+        beneficiary_id="BEN-SYN-003",
+        beneficiary_name="Amit Kumar",
+        age=52,
+        gender="Male",
+        state="Uttar Pradesh",
+        district="Lucknow",
+        hospital_id="HOSP-SYN-103",
+        hospital_name="Metro Trauma Center",
+        hospital_type="Empaneled Private",
+        package_code="PKG-SYN-402",
+        package_name="Orthopedic Joint Replacement",
+        procedure_code="PKG-SYN-402",
+        admission_date="2026-08-01",
+        discharge_date="2026-08-08",
+        claimed_amount=85000.0,
+        approved_rate=85000.0,
+        eligibility_status="verified",
+        identity_status="verified",
+        hospital_status="empaneled",
+        package_status="approved",
+        claim_status="submitted",
     )
     case_read = create_case(case_data, session)
-    case_ref = case_read.case_ref
+    case_ref = case_read.case_read if hasattr(case_read, "case_read") else case_read.case_ref
 
-    # Add rate mismatch evidence
-    _add_evidence_and_recalc(
-        case_ref, "rate_mismatch",
-        "Hospital claimed ₹65,000 against CGHS approved rate of ₹40,000 (62.5% excess).",
-        session
-    )
+    _add_evidence_and_recalc(case_ref, "duplicate_claim", "Duplicate claim record detected: identical procedure billed 12 days ago.", session)
+    _add_evidence_and_recalc(case_ref, "treatment_mismatch", "Pre-op diagnostic MRI report mismatch with procedure code.", session)
 
     case = get_case_db(case_ref, session)
     return {
         "scenario": "scenario3_high",
-        "description": "HIGH RISK: Rate mismatch. Claimed ₹65,000 vs approved ₹40,000.",
+        "description": "HIGH-RISK PM-JAY Claim: Duplicate claim indicator + treatment evidence mismatch.",
         "case_ref": case_ref,
-        "expected_risk": "~65-75",
+        "expected_risk": "58.0 (HIGH)",
         "expected_autonomy": "L1",
-        "expected_outcome": "Settlement BLOCKED - AI may recommend only",
+        "expected_outcome": "Claim Authorization BLOCKED by Tool Gateway — Human decision required",
         "current_risk": case.risk_score,
         "current_autonomy": case.autonomy_level,
         "current_status": case.case_status,
-        "next_step": (
-            f"POST /api/cases/{case_ref}/propose → "
-            f"POST /api/cases/{case_ref}/execute → Expect 'blocked'"
-        ),
+        "next_step": f"POST /api/cases/{case_ref}/propose → POST /api/cases/{case_ref}/execute (gets blocked)",
     }
 
 
 def _scenario_critical(session: Session) -> dict:
-    """Scenario 4: CRITICAL - Multiple conflicting signals. Fully blocked."""
+    """Scenario 4: Critical Risk PM-JAY Claim."""
     case_data = CaseCreate(
-        domain="CGHS",
-        beneficiary_id="BEN-SC4-001",
-        hospital_id="HOSP-UNKNOWN-004",
-        procedure_code="CGHS-MULTI-004",
-        claimed_amount=90000.0,   # Very high overage
-        approved_rate=40000.0,
+        case_ref="PMJAY-DEMO-004",
+        domain="PM-JAY",
+        beneficiary_id="BEN-SYN-004",
+        beneficiary_name="Suresh Verma",
+        age=61,
+        gender="Male",
+        state="Bihar",
+        district="Patna",
+        hospital_id="HOSP-SYN-104",
+        hospital_name="Unempaneled Nursing Home",
+        hospital_type="Unempaneled Private",
+        package_code="PKG-SYN-509",
+        package_name="Complex Neurosurgery Package",
+        procedure_code="PKG-SYN-509",
+        admission_date="2026-08-05",
+        discharge_date="2026-08-12",
+        claimed_amount=140000.0,
+        approved_rate=85000.0,
+        eligibility_status="unverified",
+        identity_status="mismatch",
+        hospital_status="unempaneled",
+        package_status="flagged",
+        claim_status="flagged",
     )
     case_read = create_case(case_data, session)
     case_ref = case_read.case_ref
 
-    # Add multiple bad evidence signals
-    _add_evidence_and_recalc(case_ref, "rate_mismatch",
-                             "Claimed ₹90,000 vs approved ₹40,000 (125% excess).", session)
-    _add_evidence_and_recalc(case_ref, "missing_document",
-                             "Discharge summary and original bills not submitted.", session)
-    _add_evidence_and_recalc(case_ref, "duplicate_claim",
-                             "Identical claim filed 8 days ago for same beneficiary and procedure.", session)
-    _add_evidence_and_recalc(case_ref, "beneficiary_conflict",
-                             "Beneficiary name in claim differs from CGHS registration record.", session)
+    _add_evidence_and_recalc(case_ref, "identity_mismatch", "Aadhaar e-KYC photo mismatch with beneficiary SECC record.", session)
+    _add_evidence_and_recalc(case_ref, "duplicate_claim", "Prior settlement found under different hospital ID for same beneficiary.", session)
+    _add_evidence_and_recalc(case_ref, "agent_disagreement", "Validation agent vs Audit agent confidence conflict.", session)
+    _add_evidence_and_recalc(case_ref, "missing_document", "Original surgical pre-authorization letter missing.", session)
 
     case = get_case_db(case_ref, session)
     return {
         "scenario": "scenario4_critical",
-        "description": "CRITICAL: Rate mismatch + missing docs + duplicate + beneficiary conflict.",
+        "description": "CRITICAL RISK PM-JAY Claim: Identity mismatch + Duplicate claim + Unempaneled hospital + Missing pre-auth.",
         "case_ref": case_ref,
-        "expected_risk": "~85-95",
+        "expected_risk": "90.0 (CRITICAL)",
         "expected_autonomy": "L0",
-        "expected_outcome": "FULLY BLOCKED - human-only intervention",
+        "expected_outcome": "FULLY BLOCKED - Immediate Anti-Fraud Escalation Required",
         "current_risk": case.risk_score,
         "current_autonomy": case.autonomy_level,
         "current_status": case.case_status,
-        "next_step": (
-            f"POST /api/cases/{case_ref}/propose → "
-            f"POST /api/cases/{case_ref}/execute → Expect 'blocked' (L0)"
-        ),
+        "next_step": f"POST /api/cases/{case_ref}/propose → POST /api/cases/{case_ref}/execute (gets blocked at L0)",
     }
 
 
 def _scenario_live_demo(session: Session) -> dict:
-    """
-    The PRIMARY NIYANTRA live demonstration.
-    
-    Phase 1: Case starts clean (Risk ~15, L4). Settlement ALLOWED.
-    Phase 2: New evidence injected (rate mismatch). Risk jumps to ~70 (L1).
-    Phase 3: Same settlement attempted. BLOCKED.
-    
-    This proves dynamic authority revocation.
-    """
-    # --- Phase 1: Create a clean case ---
+    """The Primary NIYANTRA PM-JAY Live Demonstration."""
     case_data = CaseCreate(
-        domain="CGHS",
-        beneficiary_id="BEN-LIVE-001",
-        hospital_id="HOSP-DEMO-001",
-        procedure_code="CGHS-DEMO-001",
-        claimed_amount=38000.0,
+        case_ref="PMJAY-DEMO-LIVE",
+        domain="PM-JAY",
+        beneficiary_id="BEN-SYN-LIVE",
+        beneficiary_name="Rahul Sharma",
+        age=46,
+        gender="Male",
+        state="Madhya Pradesh",
+        district="Bhopal",
+        hospital_id="HOSP-SYN-101",
+        hospital_name="Demo Care Hospital",
+        hospital_type="Empaneled Private",
+        package_code="PKG-SYN-204",
+        package_name="Demo Surgical Package",
+        procedure_code="PKG-SYN-204",
+        admission_date="2026-08-10",
+        discharge_date="2026-08-15",
+        claimed_amount=40000.0,
         approved_rate=40000.0,
+        eligibility_status="verified",
+        identity_status="verified",
+        hospital_status="empaneled",
+        package_status="approved",
+        claim_status="submitted",
     )
     case_read = create_case(case_data, session)
     case_ref = case_read.case_ref
 
-    _add_evidence_and_recalc(case_ref, "normal", "Initial check: all documents present.", session)
+    _add_evidence_and_recalc(case_ref, "normal", "Initial check: clean synthetic records.", session)
 
     case_after_phase1 = get_case_db(case_ref, session)
     phase1_risk = case_after_phase1.risk_score
@@ -283,56 +331,20 @@ def _scenario_live_demo(session: Session) -> dict:
 
     return {
         "demo": "live_demo",
-        "description": (
-            "PRIMARY NIYANTRA DEMONSTRATION: Dynamic Authority Revocation\n"
-            "Phase 1 complete: Clean case created. Now add bad evidence to see authority revoke."
-        ),
+        "description": "PRIMARY NIYANTRA DEMONSTRATION: Dynamic Risk-Adaptive Autonomy Revocation",
         "case_ref": case_ref,
         "phase1": {
-            "description": "Case created with clean evidence",
+            "description": "PM-JAY Case created clean",
             "risk": phase1_risk,
             "autonomy": phase1_level,
             "expected_gateway": "ALLOWED",
         },
         "next_steps": [
-            {
-                "step": "2a",
-                "description": "Propose and execute settlement (should be ALLOWED)",
-                "endpoint": f"POST /api/cases/{case_ref}/propose body: {{action_type: settlement}}",
-            },
-            {
-                "step": "2b",
-                "description": "Execute the proposal",
-                "endpoint": f"POST /api/cases/{case_ref}/execute",
-            },
-            {
-                "step": "3",
-                "description": "Inject bad evidence (rate mismatch)",
-                "endpoint": f"POST /api/cases/{case_ref}/evidence",
-                "body": {
-                    "evidence_type": "rate_mismatch",
-                    "description": "Hospital claimed ₹65,000 vs approved ₹40,000"
-                },
-            },
-            {
-                "step": "4a",
-                "description": "Create another settlement proposal",
-                "endpoint": f"POST /api/cases/{case_ref}/propose body: {{action_type: settlement}}",
-            },
-            {
-                "step": "4b",
-                "description": "Execute - this time it should be BLOCKED",
-                "endpoint": f"POST /api/cases/{case_ref}/execute",
-            },
-            {
-                "step": "5",
-                "description": "View the full decision lineage",
-                "endpoint": f"GET /api/cases/{case_ref}/lineage",
-            },
-            {
-                "step": "6",
-                "description": "Get the explanation narrative",
-                "endpoint": f"GET /api/cases/{case_ref}/explain",
-            },
+            "1. Propose & execute 'authorize_claim' (ALLOWED at L3)",
+            "2. Inject Risk Event 'duplicate_claim' (+35 Risk)",
+            "3. Recalculate Risk (15 -> 58, Autonomy L3 -> L1)",
+            "4. Re-propose & execute 'authorize_claim' (BLOCKED at L1)",
+            "5. Human Approval Interface engages",
         ],
     }
+

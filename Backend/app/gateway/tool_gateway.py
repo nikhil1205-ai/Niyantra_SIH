@@ -51,31 +51,18 @@ def process_proposal(
     The main Gateway entry point.
     
     Always reads CURRENT case state. Never trusts old authorization.
-    
-    Steps:
-    1. Re-read the current risk score from the Case (already done by caller,
-       but we use what's in `case` which the caller just fetched fresh).
-    2. Ask Autonomy Controller for the CURRENT level.
-    3. Check if action is permitted.
-    4. Execute or block.
-    5. Write lineage.
-    6. Return result.
     """
     action_type = proposal.action_type
 
     # ── Step 2: Ask Autonomy Controller for CURRENT level ─────────────────────
-    # We derive it fresh from the CURRENT risk score - never from a stored level.
     current_risk = case.risk_score
     current_level = determine_autonomy_level(current_risk)
 
-    # ── Step 3: L2 special case - settlement/claim_submit need human approval ───
-    # L2 is between "allowed" and "blocked". The action is not forbidden,
-    # but it requires explicit human sign-off before execution.
-    # This check must come BEFORE can_execute() since can_execute blocks L2 settlement.
-    if current_level == "L2" and action_type in ("settlement", "claim_submit", "update_status"):
+    # ── Step 3: Check L2 & L1 special cases for authorization actions ──────────
+    if current_level == "L2" and action_type in ("authorize_claim", "settlement", "claim_submit", "update_status"):
         pending_reason = (
-            f"Autonomy level {current_level} requires explicit human approval "
-            f"before '{action_type}' can execute. Use POST /api/cases/{{case_id}}/approve."
+            f"Current autonomy level {current_level} requires explicit human approval "
+            f"before '{action_type}' can execute. Case routed for Human Approval."
         )
         _write_gateway_lineage(
             proposal=proposal,
@@ -98,19 +85,22 @@ def process_proposal(
 
     if not allowed:
         # ── BLOCKED ────────────────────────────────────────────────────────────
-        # The simulated CGHS system is NEVER called when blocked.
+        block_reason = (
+            f"Current autonomy level {current_level} does not permit autonomous '{action_type}' authorization. "
+            f"Risk Score: {current_risk}/100. Action BLOCKED by NIYANTRA Tool Gateway."
+        )
         _write_gateway_lineage(
             proposal=proposal,
             case=case,
             current_risk=current_risk,
             current_level=current_level,
             outcome="blocked",
-            reason=reason,
+            reason=block_reason,
             session=session,
         )
         return GatewayResult(
             status="blocked",
-            reason=reason,
+            reason=block_reason,
             risk_score=current_risk,
             autonomy_level=current_level,
         )
@@ -139,25 +129,18 @@ def process_proposal(
 
 def _dispatch_to_cghs(action_type: str, case: Case) -> Dict[str, Any]:
     """
-    Call the appropriate simulated CGHS operation.
-    
-    Only called when Gateway has determined the action is ALLOWED.
+    Call simulated PM-JAY execution endpoint.
+    Only called when Gateway determines action is ALLOWED.
     """
-    if action_type == "verify_beneficiary":
+    if action_type in ("authorize_claim", "settlement"):
+        return simulated_cghs.execute_settlement(case.case_ref, case.claimed_amount)
+    elif action_type == "verify_beneficiary":
         return simulated_cghs.verify_beneficiary(case.case_ref, case.beneficiary_id)
-    elif action_type == "check_rate":
-        return simulated_cghs.check_rate(
-            case.case_ref, case.procedure_code, case.claimed_amount, case.approved_rate
-        )
     elif action_type == "claim_submit":
         return simulated_cghs.submit_claim(case.case_ref, case.claimed_amount)
-    elif action_type == "settlement":
-        return simulated_cghs.execute_settlement(case.case_ref, case.claimed_amount)
-    elif action_type in ("read_case", "update_status"):
-        # Lightweight operations - just acknowledge
-        return {"operation": action_type, "case_ref": case.case_ref, "acknowledged": True}
     else:
-        return {"operation": action_type, "case_ref": case.case_ref, "note": "unknown action type"}
+        return {"operation": action_type, "case_ref": case.case_ref, "status": "executed_by_gateway"}
+
 
 
 def _write_gateway_lineage(

@@ -93,13 +93,13 @@ def _explain_record(record: LineageRecord) -> Optional[str]:
         if outcome == "allowed":
             return (
                 f"Tool Gateway ALLOWED '{action}' execution at autonomy level {level}. "
-                f"The action was dispatched to the CGHS system."
+                f"The action was dispatched to the PM-JAY system."
             )
         elif outcome == "blocked":
             return (
                 f"Tool Gateway BLOCKED '{action}' execution. "
                 f"Current autonomy level {level} does not permit this action. "
-                f"The CGHS system was NOT contacted."
+                f"The PM-JAY system was NOT contacted."
             )
         elif outcome == "pending_approval":
             return (

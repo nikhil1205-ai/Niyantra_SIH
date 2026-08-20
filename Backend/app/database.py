@@ -18,6 +18,7 @@ engine = create_engine(
 
 def create_db_and_tables() -> None:
     """Create all tables defined via SQLModel on application startup."""
+    SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
 
 

@@ -26,19 +26,53 @@ def _case_ref_from_id(case_id: int) -> str:
 def _build_case_read(case: Case, session: Session) -> CaseRead:
     """Build the full CaseRead response model from a Case DB record."""
     from app.lineage.store import list_for_case
+    from app.agents.proposal_agent import pmjay_agent
 
     lineage = list_for_case(session, case.case_ref)
     latest_decision = generate_summary(lineage, case.risk_score, case.autonomy_level)
+
+    evidence_list = session.exec(
+        select(Evidence).where(Evidence.case_ref == case.case_ref)
+    ).all()
+
+    agent_results = [
+        {
+            "agent_id": r.agent_id,
+            "case_id": r.case_id,
+            "status": r.status,
+            "confidence": r.confidence,
+            "evidence": r.evidence,
+            "risk_factors": r.risk_factors,
+            "proposed_action": r.proposed_action,
+        }
+        for r in pmjay_agent.run_all_agents(case, list(evidence_list))
+    ]
 
     return CaseRead(
         id=case.id,
         case_ref=case.case_ref,
         domain=case.domain,
         beneficiary_id=case.beneficiary_id,
+        beneficiary_name=getattr(case, "beneficiary_name", "Rahul Sharma"),
+        age=getattr(case, "age", 46),
+        gender=getattr(case, "gender", "Male"),
+        state=getattr(case, "state", "Madhya Pradesh"),
+        district=getattr(case, "district", "Bhopal"),
         hospital_id=case.hospital_id,
+        hospital_name=getattr(case, "hospital_name", "Demo Care Hospital"),
+        hospital_type=getattr(case, "hospital_type", "Empaneled Private"),
+        package_code=getattr(case, "package_code", "PKG-SYN-204"),
+        package_name=getattr(case, "package_name", "Demo Surgical Package"),
         procedure_code=case.procedure_code,
+        admission_date=getattr(case, "admission_date", "2026-08-10"),
+        discharge_date=getattr(case, "discharge_date", "2026-08-15"),
         claimed_amount=case.claimed_amount,
         approved_rate=case.approved_rate,
+        eligibility_status=getattr(case, "eligibility_status", "verified"),
+        identity_status=getattr(case, "identity_status", "verified"),
+        hospital_status=getattr(case, "hospital_status", "empaneled"),
+        package_status=getattr(case, "package_status", "approved"),
+        claim_status=getattr(case, "claim_status", "submitted"),
         risk_score=case.risk_score,
         autonomy_level=case.autonomy_level,
         case_status=case.case_status,
@@ -48,7 +82,13 @@ def _build_case_read(case: Case, session: Session) -> CaseRead:
             "action_impact": case.action_impact,
             "confidence_risk": case.confidence_risk,
             "reversibility_risk": case.reversibility_risk,
+            "beneficiary_identity_risk": getattr(case, "beneficiary_identity_risk", 0.0),
+            "document_risk": getattr(case, "document_risk", 0.0),
+            "hospital_risk": getattr(case, "hospital_risk", 0.0),
+            "treatment_risk": getattr(case, "treatment_risk", 0.0),
+            "claim_anomaly_risk": getattr(case, "claim_anomaly_risk", 0.0),
         },
+        agent_results=agent_results,
         latest_decision=latest_decision,
         created_at=case.created_at,
         updated_at=case.updated_at,
@@ -56,28 +96,52 @@ def _build_case_read(case: Case, session: Session) -> CaseRead:
 
 
 def create_case(data: CaseCreate, session: Session) -> CaseRead:
-    """Create a new CGHS case with initial risk calculation."""
-    # Generate case_ref if not provided
+    """Create a new PM-JAY case with initial risk calculation."""
     if data.case_ref:
         case_ref = data.case_ref
     else:
-        # Count existing cases to generate a sequential ref
         existing = session.exec(select(Case)).all()
-        case_ref = f"CASE-{len(existing) + 1:03d}"
+        case_ref = f"PMJAY-DEMO-{len(existing) + 1:03d}"
 
-    # Initial risk calculation with no evidence, settlement as baseline action
+    # Initial risk calculation
+    temp_case = Case(
+        case_ref=case_ref,
+        domain=data.domain,
+        beneficiary_id=data.beneficiary_id,
+        beneficiary_name=data.beneficiary_name,
+        age=data.age,
+        gender=data.gender,
+        state=data.state,
+        district=data.district,
+        hospital_id=data.hospital_id,
+        hospital_name=data.hospital_name,
+        hospital_type=data.hospital_type,
+        package_code=data.package_code,
+        package_name=data.package_name,
+        procedure_code=data.procedure_code,
+        admission_date=data.admission_date,
+        discharge_date=data.discharge_date,
+        claimed_amount=data.claimed_amount,
+        approved_rate=data.approved_rate,
+        eligibility_status=data.eligibility_status,
+        identity_status=data.identity_status,
+        hospital_status=data.hospital_status,
+        package_status=data.package_status,
+        claim_status=data.claim_status,
+    )
+
     result = calculate_risk(
         claimed_amount=data.claimed_amount,
         approved_rate=data.approved_rate,
         evidence_list=[],
-        action_type="settlement",
-        confidence=0.85,
+        action_type="authorize_claim",
+        confidence=0.95,
         triggered_policies=[],
+        case=temp_case,
     )
 
     autonomy_level = determine_autonomy_level(result.risk_score)
 
-    # Determine initial case status
     if result.risk_score < 20:
         status = "clean"
     elif result.risk_score < 65:
@@ -85,39 +149,35 @@ def create_case(data: CaseCreate, session: Session) -> CaseRead:
     else:
         status = "anomaly_detected"
 
-    case = Case(
-        case_ref=case_ref,
-        domain=data.domain,
-        beneficiary_id=data.beneficiary_id,
-        hospital_id=data.hospital_id,
-        procedure_code=data.procedure_code,
-        claimed_amount=data.claimed_amount,
-        approved_rate=data.approved_rate,
-        risk_score=result.risk_score,
-        autonomy_level=autonomy_level,
-        case_status=status,
-        evidence_risk=result.evidence_risk,
-        policy_sensitivity=result.policy_sensitivity,
-        action_impact=result.action_impact,
-        confidence_risk=result.confidence_risk,
-        reversibility_risk=result.reversibility_risk,
-    )
-    session.add(case)
-    session.commit()
-    session.refresh(case)
+    temp_case.risk_score = result.risk_score
+    temp_case.autonomy_level = autonomy_level
+    temp_case.case_status = status
+    temp_case.evidence_risk = result.evidence_risk
+    temp_case.policy_sensitivity = result.policy_sensitivity
+    temp_case.action_impact = result.action_impact
+    temp_case.confidence_risk = result.confidence_risk
+    temp_case.reversibility_risk = result.reversibility_risk
+    temp_case.beneficiary_identity_risk = result.beneficiary_identity_risk
+    temp_case.document_risk = result.document_risk
+    temp_case.hospital_risk = result.hospital_risk
+    temp_case.treatment_risk = result.treatment_risk
+    temp_case.claim_anomaly_risk = result.claim_anomaly_risk
 
-    # Record creation in lineage
+    session.add(temp_case)
+    session.commit()
+    session.refresh(temp_case)
+
     append_lineage(
         session=session,
-        case_ref=case.case_ref,
+        case_ref=temp_case.case_ref,
         event_type="case_created",
-        risk_after=case.risk_score,
-        autonomy_after=case.autonomy_level,
-        case_status=case.case_status,
-        description=f"Case {case.case_ref} created for {case.domain}.",
+        risk_after=temp_case.risk_score,
+        autonomy_after=temp_case.autonomy_level,
+        case_status=temp_case.case_status,
+        description=f"PM-JAY Case {temp_case.case_ref} created for synthetic beneficiary {temp_case.beneficiary_name}.",
     )
 
-    return _build_case_read(case, session)
+    return _build_case_read(temp_case, session)
 
 
 def get_case(case_ref: str, session: Session) -> Optional[CaseRead]:
@@ -137,12 +197,9 @@ def get_case_db(case_ref: str, session: Session) -> Optional[Case]:
     ).first()
 
 
-def recalculate_risk(case: Case, session: Session, action_type: str = "settlement", confidence: float = 0.85) -> None:
+def recalculate_risk(case: Case, session: Session, action_type: str = "authorize_claim", confidence: float = 0.85) -> None:
     """
     Recalculate risk for a case based on all current evidence.
-    
-    Called after any new evidence is added.
-    Updates the Case record and writes a lineage record if risk/autonomy changed.
     """
     evidence_list = session.exec(
         select(Evidence).where(Evidence.case_ref == case.case_ref)
@@ -160,16 +217,15 @@ def recalculate_risk(case: Case, session: Session, action_type: str = "settlemen
         action_type=action_type,
         confidence=confidence,
         triggered_policies=triggered_policies,
+        case=case,
     )
 
     old_risk = case.risk_score
     old_level = case.autonomy_level
     new_level = determine_autonomy_level(result.risk_score)
 
-    # Determine updated case status
     new_status = _determine_case_status(result.risk_score, evidence_types, case.case_status)
 
-    # Update the case
     case.risk_score = result.risk_score
     case.autonomy_level = new_level
     case.case_status = new_status
@@ -178,13 +234,17 @@ def recalculate_risk(case: Case, session: Session, action_type: str = "settlemen
     case.action_impact = result.action_impact
     case.confidence_risk = result.confidence_risk
     case.reversibility_risk = result.reversibility_risk
+    case.beneficiary_identity_risk = result.beneficiary_identity_risk
+    case.document_risk = result.document_risk
+    case.hospital_risk = result.hospital_risk
+    case.treatment_risk = result.treatment_risk
+    case.claim_anomaly_risk = result.claim_anomaly_risk
     case.updated_at = datetime.utcnow()
 
     session.add(case)
     session.commit()
     session.refresh(case)
 
-    # Write lineage only if something meaningful changed
     if abs(result.risk_score - old_risk) > 0.5 or new_level != old_level:
         policy_str = ", ".join(triggered_policies) if triggered_policies else None
         append_lineage(
@@ -202,6 +262,7 @@ def recalculate_risk(case: Case, session: Session, action_type: str = "settlemen
                 old_risk, result.risk_score, old_level, new_level, triggered_policies, evidence_types
             ),
         )
+
 
 
 def _determine_case_status(risk_score: float, evidence_types: List[str], current_status: str) -> str:

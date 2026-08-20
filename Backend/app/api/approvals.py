@@ -35,8 +35,10 @@ class ExecuteRequest(BaseModel):
 class ApprovalRequest(BaseModel):
     """Request body for the human approval endpoint."""
     proposal_id: Optional[int] = None
-    mark_confirmed_irregularity: bool = False  # Only humans can set this
+    approved: bool = True                        # True = approve, False = reject
+    mark_confirmed_irregularity: bool = False    # Only humans can set this
     notes: Optional[str] = None
+    human_id: Optional[str] = None               # Officer ID for audit trail
 
 
 @router.post("/{case_ref}/execute")
@@ -97,7 +99,8 @@ def execute_proposal(
         "case_ref": case_ref,
         "proposal_id": proposal.id,
         "action_type": proposal.action_type,
-        "gateway_status": result.status,
+        "status": result.status,           # frontend reads gatewayResult.status
+        "gateway_status": result.status,   # keep backward compat
         "reason": result.reason,
         "risk_score": result.risk_score,
         "autonomy_level": result.autonomy_level,
@@ -144,13 +147,39 @@ def human_approve(
             )
         proposal = proposals[0]
 
+    # If the human rejects, skip gateway re-check and mark as rejected
+    if not data.approved:
+        proposal.gateway_status = "rejected"
+        proposal.gateway_reason = f"Human officer rejected action. Notes: {data.notes or 'none'}"
+        proposal.decided_at = datetime.utcnow()
+        session.add(proposal)
+        append_lineage(
+            session=session,
+            case_ref=case_ref,
+            event_type="human_rejection",
+            case_status=case.case_status,
+            action=proposal.action_type,
+            outcome="rejected",
+            description=f"Human officer [{data.human_id or 'OFFICER'}] REJECTED '{proposal.action_type}'. Notes: {data.notes or 'none'}",
+        )
+        session.commit()
+        return {
+            "case_ref": case_ref,
+            "proposal_id": proposal.id,
+            "human_approval": "rejected",
+            "action_type": proposal.action_type,
+            "gateway_result": "rejected",
+            "message": f"Action rejected by human officer. {data.notes or ''}",
+            "notes": data.notes,
+        }
+
     # Re-check current risk before executing (safety check)
     current_case = get_case_db(case_ref, session)
     result = process_proposal(proposal, current_case, session)
 
     # Update proposal
     proposal.gateway_status = result.status if result.status != "pending_approval" else "allowed"
-    proposal.gateway_reason = f"Human approved. {result.reason}"
+    proposal.gateway_reason = f"Human [{data.human_id or 'OFFICER'}] approved. {result.reason}"
     proposal.risk_at_decision = result.risk_score
     proposal.autonomy_at_decision = result.autonomy_level
     proposal.decided_at = datetime.utcnow()
@@ -181,7 +210,7 @@ def human_approve(
         case_status=case.case_status,
         action=proposal.action_type,
         outcome="approved",
-        description=f"Human approved '{proposal.action_type}'. Notes: {data.notes or 'none'}",
+        description=f"Human officer [{data.human_id or 'OFFICER'}] APPROVED '{proposal.action_type}'. Notes: {data.notes or 'none'}",
     )
 
     session.commit()
@@ -195,5 +224,6 @@ def human_approve(
         "risk_score": result.risk_score,
         "autonomy_level": result.autonomy_level,
         "cghs_response": result.cghs_response,
+        "message": f"Action '{proposal.action_type}' approved and executed by human officer.",
         "notes": data.notes,
     }
