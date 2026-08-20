@@ -141,6 +141,44 @@ def create_disaster_relief_case(
     )
 
 
+@router.get("")
+def list_all_cases(session: Session = Depends(get_session)):
+    """Retrieve summary list of all cases for history sidebar and audit view."""
+    cases = session.exec(select(Case).order_by(Case.created_at.desc())).all()
+    results = []
+    for c in cases:
+        app_obj = session.exec(select(Application).where(Application.case_id == c.case_id)).first()
+        latest_auto = session.exec(
+            select(AutonomyDecision).where(AutonomyDecision.case_id == c.case_id).order_by(AutonomyDecision.id.desc())
+        ).first()
+        latest_risk = session.exec(
+            select(RiskEvaluation).where(RiskEvaluation.case_id == c.case_id).order_by(RiskEvaluation.id.desc())
+        ).first()
+        
+        reason = None
+        if latest_auto and latest_auto.reason:
+            reason = latest_auto.reason
+        elif latest_risk and latest_risk.explanation:
+            reason = latest_risk.explanation
+
+        results.append({
+            "case_id": c.case_id,
+            "status": c.status,
+            "current_stage": c.current_stage,
+            "current_risk": c.current_risk,
+            "current_autonomy": c.current_autonomy,
+            "action_state": c.action_state,
+            "has_evidence_conflict": c.has_evidence_conflict,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+            "applicant_name": app_obj.full_name if app_obj else "Unknown",
+            "district": app_obj.district if app_obj else "N/A",
+            "disaster_type": app_obj.disaster_type if app_obj else "N/A",
+            "decision_reason": reason or "Case registered in system.",
+        })
+    return results
+
+
 @router.get("/{case_id}")
 def get_case_details(
     case_id: str,

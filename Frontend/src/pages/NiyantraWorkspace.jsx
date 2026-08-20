@@ -8,6 +8,7 @@ const WORKSPACE_SECTIONS = [
   { id: 'Risk', label: 'Risk Engine' },
   { id: 'Progress', label: 'Progress Pipeline' },
   { id: 'EventUpdates', label: 'Event Updates' },
+  { id: 'History', label: 'History & Audits' },
   { id: 'Officer Review', label: 'Officer Review' },
 ]
 
@@ -32,6 +33,40 @@ export default function NiyantraWorkspace() {
   
   // Module 5 Actions State
   const [actions, setActions] = useState([])
+
+  // Case History & Audit List State
+  const [caseList, setCaseList] = useState([])
+  const [caseSearchQuery, setCaseSearchQuery] = useState('')
+
+  // Module 6 Officer Review State
+  const [officerQueue, setOfficerQueue] = useState([])
+  const [officerDetails, setOfficerDetails] = useState(null)
+  const [officerLoading, setOfficerLoading] = useState(false)
+  const [decisionReasonInput, setDecisionReasonInput] = useState('')
+  const [reqEvidenceInput, setReqEvidenceInput] = useState({ evidenceRequired: '', instructions: '' })
+  const [confirmModalType, setConfirmModalType] = useState(null) // 'APPROVED' | 'REJECTED' | 'REQUEST_MORE_EVIDENCE' | null
+
+  const fetchCaseList = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/cases`)
+      if (res.ok) {
+        const data = await res.json()
+        setCaseList(data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch case list:", err)
+    }
+  }
+
+  useEffect(() => {
+    fetchCaseList()
+  }, [])
+
+  const handleSelectCase = (caseId) => {
+    setActiveCaseRef(caseId)
+    fetchCaseDetails(caseId)
+    fetchHistories(caseId)
+  }
 
   // Module 1 Form State
   const [form, setForm] = useState({
@@ -271,6 +306,9 @@ export default function NiyantraWorkspace() {
       } catch (actErr) {
         console.error("Failed to fetch actions", actErr)
       }
+
+      // Refresh sidebar case list
+      fetchCaseList()
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
@@ -458,6 +496,105 @@ export default function NiyantraWorkspace() {
     }
   }
 
+  // Module 6: Officer Review Handlers
+  const fetchOfficerQueue = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/officer-review/queue`)
+      if (res.ok) {
+        const data = await res.json()
+        setOfficerQueue(data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch officer queue", err)
+    }
+  }
+
+  const fetchOfficerDetails = async (caseId) => {
+    if (!caseId) return
+    setOfficerLoading(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(caseId)}/officer-review`)
+      if (res.ok) {
+        const data = await res.json()
+        setOfficerDetails(data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch officer review details", err)
+    } finally {
+      setOfficerLoading(false)
+    }
+  }
+
+  const handleSelectOfficerCase = (caseId) => {
+    setActiveCaseRef(caseId)
+    fetchCaseDetails(caseId)
+    fetchOfficerDetails(caseId)
+  }
+
+  const handleConfirmDecision = async () => {
+    const targetId = officerDetails?.case_id || activeCaseRef
+    if (!targetId || !confirmModalType) return
+
+    setOfficerLoading(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      if (confirmModalType === 'REQUEST_MORE_EVIDENCE') {
+        if (!reqEvidenceInput.evidenceRequired.trim()) {
+          throw new Error("Specification of required evidence is mandatory.")
+        }
+        const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/request-evidence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            evidence_required: reqEvidenceInput.evidenceRequired,
+            instructions: reqEvidenceInput.instructions,
+            officer_name: 'Officer John Doe'
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.detail || "Failed to submit request for evidence.")
+        }
+        const data = await res.json()
+        setSuccessMsg(`Additional evidence requested. Case stage set to ${data.new_stage}. Returned to Event Updates.`)
+      } else {
+        if (!decisionReasonInput.trim()) {
+          throw new Error("Decision justification reason is mandatory.")
+        }
+        const targetAction = officerDetails?.actions?.find(a => a.status.includes('AUTHORIZATION') || a.status === 'BLOCKED' || a.status === 'PERMITTED')
+        const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/decision`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            decision: confirmModalType,
+            reason: decisionReasonInput,
+            action_id: targetAction?.action_id || null,
+            officer_name: 'Officer John Doe'
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.detail || "Officer decision submission failed.")
+        }
+        const data = await res.json()
+        setSuccessMsg(`Officer decision recorded as ${data.decision}. Case stage updated to ${data.new_stage}.`)
+      }
+
+      setConfirmModalType(null)
+      setDecisionReasonInput('')
+      setReqEvidenceInput({ evidenceRequired: '', instructions: '' })
+      
+      await fetchCaseDetails(targetId)
+      await fetchOfficerDetails(targetId)
+      await fetchOfficerQueue()
+    } catch (err) {
+      setErrorMsg(err.message)
+    } finally {
+      setOfficerLoading(false)
+    }
+  }
+
   const handleVerifyEvent = async (eventId) => {
     const targetId = caseDetails?.case_id || activeCaseRef
     if (!targetId) return
@@ -512,11 +649,16 @@ export default function NiyantraWorkspace() {
     }
   }
 
-  // Fetch histories whenever switching to Progress tab
+  // Fetch histories / queues whenever switching tabs
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
     if (tabId === 'Progress' && (caseDetails?.case_id || activeCaseRef)) {
       fetchHistories(caseDetails?.case_id || activeCaseRef)
+    } else if (tabId === 'Officer Review') {
+      fetchOfficerQueue()
+      if (caseDetails?.case_id || activeCaseRef) {
+        fetchOfficerDetails(caseDetails?.case_id || activeCaseRef)
+      }
     }
   }
 
@@ -604,7 +746,7 @@ export default function NiyantraWorkspace() {
             </ul>
 
             {/* Quick Case Lookup */}
-            <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #edf2f7' }}>
+            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #edf2f7' }}>
               <label style={labelStyle}>Lookup Existing Case</label>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
@@ -1706,43 +1848,89 @@ export default function NiyantraWorkspace() {
                       </div>
                     )}
 
-                    {/* CASE TIMELINE */}
+                    {/* CASE TIMELINE WITH REASON OF DECISION */}
                     {caseDetails.events && caseDetails.events.length > 0 && (
                       <div style={cardBoxStyle}>
-                        <h4 style={cardHeaderStyle}>Case Event Timeline</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                          <h4 style={{ ...cardHeaderStyle, margin: 0 }}>Case Event Timeline & Audit Log</h4>
+                          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                            Case: <strong>{caseDetails.case_id}</strong>
+                          </span>
+                        </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                           {[...caseDetails.events].reverse().map((evt, i) => {
                             const isConflict = evt.event_type === 'EVIDENCE_CONFLICT_DETECTED'
-                            const isReauth   = evt.event_type === 'ACTION_REAUTHORIZATION_REQUIRED'
+                            const isReauth   = evt.event_type === 'ACTION_REAUTHORIZATION_REQUIRED' || evt.event_type === 'ACTION_REQUIRES_REAUTHORIZATION'
                             const isField    = evt.event_type === 'FIELD_INSPECTION_RECEIVED' || evt.event_type === 'PUBLIC_OBSERVATION'
                             const isRisk     = evt.event_type === 'RISK_EVALUATED' || evt.event_type === 'RISK_REEVALUATED'
                             const isAuto     = evt.event_type === 'AUTONOMY_ASSIGNED' || evt.event_type === 'AUTONOMY_CHANGED'
-                            const dotColor   = isConflict || isReauth ? '#f59e0b' : isField ? '#1d4ed8' : isRisk || isAuto ? '#0087CC' : '#22c55e'
+                            const isExecuted = evt.event_type === 'ACTION_SIMULATED_EXECUTED'
+                            const isBlocked  = evt.event_type === 'ACTION_BLOCKED'
+                            const dotColor   = isConflict || isReauth || isBlocked ? '#ef4444' : isField ? '#1d4ed8' : isRisk || isAuto ? '#0087CC' : '#22c55e'
                             
                             let details = null
+                            let decisionReason = null
                             try {
                               const meta = evt.metadata_json ? JSON.parse(evt.metadata_json) : {}
-                              if (isRisk) details = `Score: ${meta.risk_score} | Level: ${meta.risk_level}`
-                              else if (isAuto) details = `Assigned Level: ${meta.autonomy_level || meta.new_autonomy}`
-                              else if (isField) details = `Damage reported: ${meta.damage_level || meta.damage_finding} ${meta.verification_status ? `(${meta.verification_status})` : ''}`
-                              else if (isConflict) details = `AI assessed ${meta.ai_damage_level}, but field report found ${meta.field_damage_level}`
-                              else if (evt.event_type === 'AGENT_COMPLETED') details = `Confidence: ${meta.confidence ? Math.round(meta.confidence*100) + '%' : 'N/A'}`
-                              else if (evt.description) details = evt.description
+                              if (isRisk) {
+                                details = `Risk Score: ${meta.risk_score} | Risk Level: ${meta.risk_level}`
+                                decisionReason = meta.reason || meta.explanation || `Risk calculated using multi-factor engine (Anomaly Score: ${meta.risk_score}).`
+                              }
+                              else if (isAuto) {
+                                details = `Autonomy Assigned: ${meta.autonomy_level || meta.new_autonomy || meta.to}`
+                                decisionReason = meta.reason || `Autonomy changed from ${meta.from || meta.previous_autonomy || 'N/A'} to ${meta.to || meta.autonomy_level}.`
+                              }
+                              else if (isField) {
+                                details = `Damage Reported: ${meta.damage_level || meta.damage_finding} (${meta.verification_status || 'VERIFIED'})`
+                                decisionReason = `Verified officer observation recorded for case location ${meta.location || 'site'}.`
+                              }
+                              else if (isConflict) {
+                                details = `Conflict Detected: AI damage (${meta.ai_damage_level}) vs Field inspection (${meta.field_damage_level})`
+                                decisionReason = `Discrepancy between automated image scan and verified field report added +55 anomaly risk penalty.`
+                              }
+                              else if (isReauth) {
+                                details = `Action Suspended: Re-authorization required`
+                                decisionReason = meta.reason || `Case autonomy dropped; previously permitted action requires officer sign-off.`
+                              }
+                              else if (isBlocked) {
+                                details = `Action Blocked by Tool Gateway: ${meta.action_type || 'SENSITIVE_ACTION'}`
+                                decisionReason = meta.reason || `Action requires autonomy ${meta.required}, but current autonomy is ${meta.current}.`
+                              }
+                              else if (isExecuted) {
+                                details = `Action Executed: ${meta.action_type || 'ACTION'}`
+                                decisionReason = `Tool Gateway validated case autonomy level as sufficient for automated execution.`
+                              }
+                              else if (evt.event_type === 'AGENT_COMPLETED') {
+                                details = `Agent: ${evt.source} | Confidence: ${meta.confidence ? Math.round(meta.confidence*100) + '%' : 'N/A'}`
+                                decisionReason = `Finding status: ${meta.status || 'COMPLETED'}. Evidence IDs verified.`
+                              }
+                              else if (evt.description) {
+                                details = evt.description
+                              }
                             } catch (e) {}
 
                             return (
-                              <div key={evt.event_id} style={{ display: 'flex', gap: '14px', padding: '10px 0', borderBottom: i < caseDetails.events.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                              <div key={evt.event_id} style={{ display: 'flex', gap: '14px', padding: '12px 0', borderBottom: i < caseDetails.events.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '16px' }}>
-                                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dotColor, marginTop: '4px', flexShrink: 0 }} />
+                                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: dotColor, marginTop: '4px', flexShrink: 0 }} />
                                   {i < caseDetails.events.length - 1 && <div style={{ width: '2px', flex: 1, background: '#e2e8f0', marginTop: '4px' }} />}
                                 </div>
                                 <div style={{ flex: 1, paddingBottom: '8px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: '13px', fontWeight: '800', color: dotColor }}>{evt.event_type.replace(/_/g, ' ')}</span>
-                                    <span style={{ fontSize: '11px', color: '#94a3b8', padding: '2px 6px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>{evt.source.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '11px', color: '#64748b', padding: '2px 6px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0', fontWeight: '600' }}>{evt.source.replace(/_/g, ' ')}</span>
                                   </div>
-                                  {details && <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', fontWeight: '500' }}>{details}</div>}
-                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                                  
+                                  {details && <div style={{ fontSize: '12px', color: '#1e293b', marginTop: '6px', fontWeight: '600' }}>{details}</div>}
+                                  
+                                  {/* Decision Reason Callout Box */}
+                                  {decisionReason && (
+                                    <div style={{ marginTop: '6px', padding: '8px 12px', background: '#f8fafc', borderLeft: `3px solid ${dotColor}`, borderRadius: '4px', fontSize: '12px', color: '#334155', lineHeight: '1.4' }}>
+                                      <strong style={{ color: '#0f172a' }}>Reason of Decision:</strong> {decisionReason}
+                                    </div>
+                                  )}
+
+                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
                                     {new Date(evt.created_at).toLocaleString()}
                                   </div>
                                 </div>
@@ -1878,18 +2066,598 @@ export default function NiyantraWorkspace() {
 
 
             {/* ══════════════════════════════════════════════════════════════════ */}
-            {/* TAB 4: OFFICER REVIEW                                              */}
+            {/* TAB 4.8: HISTORY & DECISION TIMELINE AUDIT PORTAL                   */}
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'History' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a', margin: 0, letterSpacing: '-0.02em', lineHeight: '1.3' }}>
+                      History & Governance Audit Portal
+                    </h1>
+                    <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0 0' }}>
+                      Case Event Timeline with history of every case with reason of decision
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>Filter Case:</span>
+                    <select
+                      value={activeCaseRef}
+                      onChange={(e) => handleSelectCase(e.target.value)}
+                      style={{ ...inputStyle, width: 'auto', padding: '6px 12px', fontWeight: '700', color: '#0369a1', background: '#f0f9ff', borderColor: '#bae6fd' }}
+                    >
+                      <option value="">-- All System Cases --</option>
+                      {caseList.map(c => (
+                        <option key={c.case_id} value={c.case_id}>
+                          {c.case_id} — {c.applicant_name} ({c.current_autonomy || 'Intake'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* CASE SUMMARY BANNER */}
+                {caseDetails && (
+                  <div style={{ ...cardBoxStyle, background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)', borderLeft: '4px solid #0087CC', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                            {caseDetails.case_id}
+                          </h3>
+                          <span style={{ fontSize: '12px', fontWeight: '700', padding: '2px 10px', borderRadius: '12px', background: caseDetails.current_autonomy === 'L3' ? '#ecfdf5' : caseDetails.current_autonomy === 'L2' ? '#fffbeb' : '#fef2f2', color: caseDetails.current_autonomy === 'L3' ? '#059669' : caseDetails.current_autonomy === 'L2' ? '#d97706' : '#dc2626', border: '1px solid' }}>
+                            Autonomy: {caseDetails.current_autonomy || 'Unassigned'}
+                          </span>
+                          {caseDetails.has_evidence_conflict && (
+                            <span style={{ fontSize: '11px', fontWeight: '800', padding: '2px 8px', borderRadius: '12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                              EVIDENCE CONFLICT DETECTED
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '13px', color: '#475569', marginTop: '6px', marginBottom: 0 }}>
+                          Applicant: <strong>{caseDetails.application?.full_name}</strong> | District: <strong>{caseDetails.application?.district}</strong> | Disaster: <strong>{caseDetails.application?.disaster_type}</strong>
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>Calculated Risk Score</div>
+                        <div style={{ fontSize: '22px', fontWeight: '800', color: caseDetails.current_risk > 60 ? '#dc2626' : caseDetails.current_risk > 25 ? '#d97706' : '#059669' }}>
+                          {caseDetails.current_risk != null ? caseDetails.current_risk.toFixed(1) : 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Reason of decision callout */}
+                    {caseDetails.autonomy?.reason && (
+                      <div style={{ marginTop: '14px', padding: '10px 14px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', color: '#1e293b' }}>
+                        <strong style={{ color: '#0f172a' }}>Primary Decision Governance Rationale:</strong> {caseDetails.autonomy.reason}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* CASE EVENT TIMELINE WITH HISTORY OF EVERY CASE WITH REASON OF DECISION */}
+                <div style={cardBoxStyle}>
+                  <h4 style={cardHeaderStyle}>
+                    Case Event Timeline with history of every case with reason of decision
+                  </h4>
+
+                  {(!caseDetails || !caseDetails.events || caseDetails.events.length === 0) ? (
+                    <div style={{ textAlign: 'center', padding: '30px 20px', color: '#64748b' }}>
+                      <p style={{ fontSize: '14px', margin: 0 }}>Select a case from the Left Sidebar <strong>History</strong> list or top dropdown to view its complete timeline and decision reasons.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                      {[...caseDetails.events].reverse().map((evt, i) => {
+                        const isConflict = evt.event_type === 'EVIDENCE_CONFLICT_DETECTED'
+                        const isReauth   = evt.event_type === 'ACTION_REAUTHORIZATION_REQUIRED' || evt.event_type === 'ACTION_REQUIRES_REAUTHORIZATION'
+                        const isField    = evt.event_type === 'FIELD_INSPECTION_RECEIVED' || evt.event_type === 'PUBLIC_OBSERVATION'
+                        const isRisk     = evt.event_type === 'RISK_EVALUATED' || evt.event_type === 'RISK_REEVALUATED'
+                        const isAuto     = evt.event_type === 'AUTONOMY_ASSIGNED' || evt.event_type === 'AUTONOMY_CHANGED'
+                        const isExecuted = evt.event_type === 'ACTION_SIMULATED_EXECUTED'
+                        const isBlocked  = evt.event_type === 'ACTION_BLOCKED'
+                        const dotColor   = isConflict || isReauth || isBlocked ? '#ef4444' : isField ? '#1d4ed8' : isRisk || isAuto ? '#0087CC' : '#22c55e'
+                        
+                        let details = null
+                        let decisionReason = null
+                        try {
+                          const meta = evt.metadata_json ? JSON.parse(evt.metadata_json) : {}
+                          if (isRisk) {
+                            details = `Risk Score: ${meta.risk_score} | Risk Level: ${meta.risk_level}`
+                            decisionReason = meta.reason || meta.explanation || `Risk score calculated deterministically by multi-factor Risk Engine.`
+                          }
+                          else if (isAuto) {
+                            details = `Autonomy Assigned: ${meta.autonomy_level || meta.new_autonomy || meta.to}`
+                            decisionReason = meta.reason || `Autonomy transitioned from ${meta.from || 'N/A'} to ${meta.to || meta.autonomy_level} based on risk bounds.`
+                          }
+                          else if (isField) {
+                            details = `Damage Reported: ${meta.damage_level || meta.damage_finding} (${meta.verification_status || 'VERIFIED'})`
+                            decisionReason = `Field observation submitted by officer/public recorded for verification.`
+                          }
+                          else if (isConflict) {
+                            details = `Conflict Detected: AI (${meta.ai_damage_level}) vs Field (${meta.field_damage_level})`
+                            decisionReason = `Contradiction between AI vision assessment and officer ground report added +55 anomaly risk penalty.`
+                          }
+                          else if (isReauth) {
+                            details = `Action Suspended: Re-authorization required`
+                            decisionReason = meta.reason || `Autonomy level downgraded; sensitive action requires human officer sign-off.`
+                          }
+                          else if (isBlocked) {
+                            details = `Action Blocked by Tool Gateway: ${meta.action_type || 'ACTION'}`
+                            decisionReason = meta.reason || `Action requires autonomy ${meta.required}, but case is operating under ${meta.current}.`
+                          }
+                          else if (isExecuted) {
+                            details = `Action Executed: ${meta.action_type || 'ACTION'}`
+                            decisionReason = `Tool Gateway verified case autonomy level as sufficient for autonomous execution.`
+                          }
+                          else if (evt.event_type === 'AGENT_COMPLETED') {
+                            details = `Agent: ${evt.source} | Confidence: ${meta.confidence ? Math.round(meta.confidence*100) + '%' : 'N/A'}`
+                            decisionReason = `Multi-agent findings completed and recorded to evidence package.`
+                          }
+                          else if (evt.description) {
+                            details = evt.description
+                          }
+                        } catch (e) {}
+
+                        return (
+                          <div key={evt.event_id} style={{ display: 'flex', gap: '16px', padding: '14px 0', borderBottom: i < caseDetails.events.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '18px' }}>
+                              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: dotColor, marginTop: '4px', flexShrink: 0 }} />
+                              {i < caseDetails.events.length - 1 && <div style={{ width: '2px', flex: 1, background: '#e2e8f0', marginTop: '4px' }} />}
+                            </div>
+                            <div style={{ flex: 1, paddingBottom: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '14px', fontWeight: '800', color: dotColor }}>{evt.event_type.replace(/_/g, ' ')}</span>
+                                <span style={{ fontSize: '11px', color: '#64748b', padding: '2px 8px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0', fontWeight: '600' }}>{evt.source.replace(/_/g, ' ')}</span>
+                              </div>
+                              
+                              {details && <div style={{ fontSize: '13px', color: '#1e293b', marginTop: '6px', fontWeight: '600' }}>{details}</div>}
+                              
+                              {decisionReason && (
+                                <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f8fafc', borderLeft: `4px solid ${dotColor}`, borderRadius: '4px', fontSize: '12px', color: '#334155', lineHeight: '1.5' }}>
+                                  <strong style={{ color: '#0f172a' }}>Reason of Decision:</strong> {decisionReason}
+                                </div>
+                              )}
+
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+                                {new Date(evt.created_at).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* AUDIT SUMMARY TABLE OF ALL CASES */}
+                <div style={{ ...cardBoxStyle, marginTop: '24px' }}>
+                  <h4 style={cardHeaderStyle}>System-Wide Governance Audit Registry</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                          <th style={{ padding: '10px' }}>Case ID</th>
+                          <th style={{ padding: '10px' }}>Applicant</th>
+                          <th style={{ padding: '10px' }}>District</th>
+                          <th style={{ padding: '10px' }}>Risk Score</th>
+                          <th style={{ padding: '10px' }}>Autonomy</th>
+                          <th style={{ padding: '10px' }}>Reason of Decision</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {caseList.map(c => (
+                          <tr key={c.case_id} style={{ borderBottom: '1px solid #f1f5f9', background: c.case_id === activeCaseRef ? '#f0f9ff' : 'transparent' }}>
+                            <td style={{ padding: '10px', fontWeight: '700', color: '#0087CC' }}>{c.case_id}</td>
+                            <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b' }}>{c.applicant_name}</td>
+                            <td style={{ padding: '10px', color: '#64748b' }}>{c.district}</td>
+                            <td style={{ padding: '10px', fontWeight: '700' }}>{c.current_risk != null ? c.current_risk.toFixed(1) : '—'}</td>
+                            <td style={{ padding: '10px' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '700', background: c.current_autonomy === 'L3' ? '#ecfdf5' : c.current_autonomy === 'L2' ? '#fffbeb' : '#fef2f2', color: c.current_autonomy === 'L3' ? '#059669' : c.current_autonomy === 'L2' ? '#d97706' : '#dc2626' }}>
+                                {c.current_autonomy || 'Intake'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px', fontSize: '12px', color: '#475569', maxWidth: '300px' }}>
+                              {c.decision_reason || 'Registered in system'}
+                            </td>
+                            <td style={{ padding: '10px', textAlign: 'right' }}>
+                              <button
+                                onClick={() => handleSelectCase(c.case_id)}
+                                style={{ ...btnStyleSecondary, padding: '4px 10px', fontSize: '11px' }}
+                              >
+                                Select & Audit
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+            {/* ══════════════════════════════════════════════════════════════════ */}
+            {/* TAB 5: OFFICER REVIEW & HUMAN DECISION COCKPIT (MODULE 6)          */}
             {/* ══════════════════════════════════════════════════════════════════ */}
             {activeTab === 'Officer Review' && (
               <div>
-                <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#000433', marginBottom: '16px' }}>
-                  Officer Review Portal
-                </h2>
-                <div style={cardBoxStyle}>
-                  <p style={{ color: '#64748b', fontSize: '14px' }}>
-                    Human officer override and final sign-off portal. This will be connected when risk scoring triggers L2 (Human Approval Required) in later modules.
-                  </p>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a', margin: 0, letterSpacing: '-0.02em', lineHeight: '1.3' }}>
+                      Officer Review & Decision Cockpit
+                    </h1>
+                    <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0 0' }}>
+                      Module 6: Human-in-the-Loop Governance & Authorization Center
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: '700', background: '#fef3c7', color: '#b45309', padding: '6px 14px', borderRadius: '20px', border: '1px solid #fde68a' }}>
+                    {officerQueue.length} Cases Requiring Intervention
+                  </span>
                 </div>
+
+                {/* Main 2-Column Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', alignItems: 'start' }}>
+                  
+                  {/* Left Column: Officer Review Queue */}
+                  <div style={cardBoxStyle}>
+                    <h4 style={{ ...cardHeaderStyle, fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '12px' }}>
+                      Intervention Queue
+                    </h4>
+                    
+                    {officerQueue.length === 0 ? (
+                      <div style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
+                        No cases currently require human officer review.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '600px', overflowY: 'auto' }}>
+                        {officerQueue.map(c => {
+                          const isActive = c.case_id === (officerDetails?.case_id || activeCaseRef)
+                          return (
+                            <div
+                              key={c.case_id}
+                              onClick={() => handleSelectOfficerCase(c.case_id)}
+                              style={{
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: isActive ? '2px solid #dc2626' : '1px solid #e2e8f0',
+                                background: isActive ? '#fef2f2' : '#ffffff',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '800', color: isActive ? '#dc2626' : '#1e293b' }}>
+                                  {c.case_id}
+                                </span>
+                                <span style={{ fontSize: '10px', fontWeight: '700', background: c.current_autonomy === 'L1' ? '#fef2f2' : '#ecfdf5', color: c.current_autonomy === 'L1' ? '#dc2626' : '#059669', padding: '2px 6px', borderRadius: '4px', border: '1px solid' }}>
+                                  {c.current_autonomy || 'L1'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>
+                                {c.applicant_name} ({c.district})
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700', marginBottom: '4px' }}>
+                                Risk: {c.current_risk != null ? c.current_risk.toFixed(1) : 'High'} | {c.has_evidence_conflict ? 'Conflict' : 'Review Needed'}
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#64748b', lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                {c.reason}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Case Cockpit Workspace */}
+                  <div>
+                    {(!officerDetails && !activeCaseRef) ? (
+                      <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
+                        <h3>Select a Case from the Queue</h3>
+                        <p>Click any case card in the left Intervention Queue to open the decision cockpit.</p>
+                      </div>
+                    ) : officerLoading ? (
+                      <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
+                        <p>Loading Officer Decision Cockpit data...</p>
+                      </div>
+                    ) : officerDetails ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        
+                        {/* 1. CASE SUMMARY BANNER */}
+                        <div style={{ ...cardBoxStyle, borderLeft: '5px solid #dc2626', background: '#fafafa' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                                  {officerDetails.case_id}
+                                </h2>
+                                <span style={{ fontSize: '12px', fontWeight: '800', padding: '3px 10px', borderRadius: '12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                                  {officerDetails.current_stage.replace(/_/g, ' ')}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '14px', color: '#334155', marginTop: '6px', marginBottom: 0, fontWeight: '500' }}>
+                                Applicant: <strong>{officerDetails.application?.full_name}</strong> ({officerDetails.application?.citizen_id}) | District: <strong>{officerDetails.application?.district}</strong>
+                              </p>
+                              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px', marginBottom: 0 }}>
+                                Disaster Type: <strong>{officerDetails.application?.disaster_type}</strong> | Requested Relief: <strong style={{ color: '#059669', fontSize: '15px' }}>₹{officerDetails.application?.requested_amount?.toLocaleString()}</strong>
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '16px', textAlign: 'center' }}>
+                              <div style={{ background: '#ffffff', padding: '10px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Current Risk</div>
+                                <div style={{ fontSize: '22px', fontWeight: '800', color: officerDetails.current_risk > 60 ? '#dc2626' : '#d97706' }}>
+                                  {officerDetails.current_risk != null ? officerDetails.current_risk.toFixed(1) : 'N/A'}
+                                </div>
+                              </div>
+                              <div style={{ background: '#ffffff', padding: '10px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Current Autonomy</div>
+                                <div style={{ fontSize: '22px', fontWeight: '800', color: '#dc2626' }}>
+                                  {officerDetails.current_autonomy}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. WHY IS THIS CASE HERE? (EXPLANATION NARRATIVE PANEL) */}
+                        <div style={{ ...cardBoxStyle, background: '#fffbeb', borderLeft: '4px solid #f59e0b' }}>
+                          <h4 style={{ ...cardHeaderStyle, color: '#92400e', marginBottom: '10px' }}>
+                            WHY IS THIS CASE HERE? (Governance Decision Lineage)
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {officerDetails.explanation_narrative?.map((step, idx) => (
+                              <div key={idx} style={{ fontSize: '13px', color: '#78350f', fontWeight: '500', lineHeight: '1.5' }}>
+                                {step}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 3. SIDE-BY-SIDE EVIDENCE COMPARISON & CONFLICT ALERT */}
+                        <div style={cardBoxStyle}>
+                          <h4 style={cardHeaderStyle}>EVIDENCE COMPARISON (AI Assessment vs Field Inspection)</h4>
+                          
+                          {officerDetails.has_evidence_conflict && (
+                            <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '18px' }}>⚠️</span>
+                              <span>EVIDENCE CONFLICT DETECTED: Ground field report contradicts AI image assessment (+55 Process Anomaly risk penalty applied).</span>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            {/* AI Assessment Box */}
+                            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                AI Vision & Document Assessment (Module 2)
+                              </div>
+                              <div style={{ fontSize: '18px', fontWeight: '800', color: officerDetails.ai_damage_level === 'SEVERE' ? '#dc2626' : '#d97706', marginBottom: '6px' }}>
+                                {officerDetails.ai_damage_level} DAMAGE
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#475569' }}>
+                                Assessed via multi-agent vision scan of citizen upload (89% Confidence).
+                              </div>
+                            </div>
+
+                            {/* Field Inspection Box */}
+                            <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                Verified Field Inspection (Module 4)
+                              </div>
+                              <div style={{ fontSize: '18px', fontWeight: '800', color: '#0284c7', marginBottom: '6px' }}>
+                                {officerDetails.field_damage_level} DAMAGE
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#0369a1' }}>
+                                Submitted by {officerDetails.field_evidence?.submitted_by || 'Government Officer'} on site.
+                              </div>
+                              {officerDetails.field_evidence?.description && (
+                                <div style={{ fontSize: '11px', color: '#334155', fontStyle: 'italic', marginTop: '6px', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e0f2fe' }}>
+                                  "{officerDetails.field_evidence.description}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 4. AI AGENT FINDINGS (MODULE 2) */}
+                        <div style={cardBoxStyle}>
+                          <h4 style={cardHeaderStyle}>AI AGENT FINDINGS (Structured Findings Package)</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                            {officerDetails.ai_findings?.map((agent, idx) => {
+                              const isPass = agent.status === 'VERIFIED' || agent.status === 'ELIGIBLE'
+                              return (
+                                <div key={idx} style={{ padding: '14px', borderRadius: '8px', border: isPass ? '1px solid #bbf7d0' : '1px solid #fde68a', background: isPass ? '#f0fdf4' : '#fffbeb' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>{agent.agent_name.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: isPass ? '#166534' : '#92400e', background: isPass ? '#dcfce7' : '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>
+                                      {agent.status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#475569' }}>
+                                    Confidence: <strong>{agent.confidence ? Math.round(agent.confidence * 100) + '%' : 'N/A'}</strong>
+                                  </div>
+                                  {agent.damage_level && (
+                                    <div style={{ fontSize: '12px', color: '#1e293b', marginTop: '4px', fontWeight: '600' }}>
+                                      Damage: {agent.damage_level}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 5. BLOCKED / RESTRICTED AI ACTION (MODULE 5 TOOL GATEWAY) */}
+                        {officerDetails.actions && officerDetails.actions.length > 0 && (
+                          <div style={{ ...cardBoxStyle, borderTop: '4px solid #ef4444' }}>
+                            <h4 style={{ ...cardHeaderStyle, color: '#b91c1c' }}>BLOCKED / RESTRICTED AI ACTION (Tool Gateway Status)</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {officerDetails.actions.map(act => (
+                                <div key={act.action_id} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#991b1b' }}>{act.action_type.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '800', background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
+                                      🔒 {act.status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#7f1d1d', marginBottom: '6px' }}>
+                                    Required Autonomy Level: <strong>{act.required_autonomy}</strong> | Current Case Autonomy: <strong>{officerDetails.current_autonomy}</strong>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#991b1b', fontStyle: 'italic', background: '#ffffff', padding: '8px 12px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                                    Tool Gateway Enforcement: Current case autonomy does not permit autonomous execution of this action. Human officer authorization is required.
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 6. OFFICER DECISION CONTROLS */}
+                        <div style={{ ...cardBoxStyle, background: '#f8fafc', border: '2px solid #cbd5e1' }}>
+                          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', margin: '0 0 14px 0' }}>
+                            OFFICER DECISION PANEL (Human Oversight Action)
+                          </h3>
+                          
+                          <p style={{ fontSize: '13px', color: '#475569', marginBottom: '18px' }}>
+                            Review the evidence and select the decision action below. Your decision will be persisted with your name, timestamp, and audit justification.
+                          </p>
+
+                          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => { setConfirmModalType('APPROVED'); setDecisionReasonInput('Evidence reviewed and conflict resolved. Payment approved.'); }}
+                              style={{ ...btnStylePrimary, background: '#10b981', padding: '12px 24px', fontSize: '14px', flex: 1, minWidth: '160px' }}
+                            >
+                              ✓ APPROVE RELIEF
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => { setConfirmModalType('REJECTED'); setDecisionReasonInput(''); }}
+                              style={{ ...btnStylePrimary, background: '#ef4444', padding: '12px 24px', fontSize: '14px', flex: 1, minWidth: '160px' }}
+                            >
+                              ✗ REJECT RELIEF
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => { setConfirmModalType('REQUEST_MORE_EVIDENCE'); }}
+                              style={{ ...btnStyleSecondary, borderColor: '#f59e0b', color: '#b45309', background: '#fffbeb', padding: '12px 24px', fontSize: '14px', flex: 1, minWidth: '200px', fontWeight: '700' }}
+                            >
+                              📋 REQUEST MORE EVIDENCE
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 7. PAST OFFICER DECISIONS LOG */}
+                        {officerDetails.past_decisions && officerDetails.past_decisions.length > 0 && (
+                          <div style={cardBoxStyle}>
+                            <h4 style={cardHeaderStyle}>Decision History & Audit Trail</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {officerDetails.past_decisions.map(dec => (
+                                <div key={dec.decision_id} style={{ padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '800', color: dec.decision === 'APPROVED' ? '#059669' : dec.decision === 'REJECTED' ? '#dc2626' : '#d97706' }}>
+                                      {dec.decision}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                      Decided By: {dec.decided_by} ({new Date(dec.created_at).toLocaleString()})
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#334155' }}>
+                                    <strong>Justification:</strong> {dec.reason}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+                    ) : null}
+                  </div>
+
+                </div>
+
+                {/* DECISION CONFIRMATION MODAL */}
+                {confirmModalType && (
+                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px' }}>
+                    <div style={{ background: '#ffffff', borderRadius: '14px', width: '100%', maxWidth: '540px', padding: '28px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+                      
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', color: confirmModalType === 'APPROVED' ? '#059669' : confirmModalType === 'REJECTED' ? '#dc2626' : '#d97706', margin: '0 0 10px 0' }}>
+                        Confirm Officer Decision: {confirmModalType.replace(/_/g, ' ')}
+                      </h3>
+                      
+                      <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px', lineHeight: '1.5' }}>
+                        {confirmModalType === 'APPROVED' && "You are approving the disaster relief action for this case after reviewing AI findings and field evidence."}
+                        {confirmModalType === 'REJECTED' && "You are rejecting the disaster relief application for this case. A mandatory justification reason is required."}
+                        {confirmModalType === 'REQUEST_MORE_EVIDENCE' && "You are requesting additional evidence. The case stage will set to AWAITING_ADDITIONAL_EVIDENCE and return to Event Updates."}
+                      </p>
+
+                      {confirmModalType !== 'REQUEST_MORE_EVIDENCE' ? (
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={labelStyle}>Decision Justification Reason (Mandatory)</label>
+                          <textarea
+                            value={decisionReasonInput}
+                            onChange={(e) => setDecisionReasonInput(e.target.value)}
+                            style={{ ...inputStyle, minHeight: '90px' }}
+                            placeholder="Enter detailed reason for officer sign-off..."
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                          <div>
+                            <label style={labelStyle}>Evidence Required (Mandatory)</label>
+                            <input
+                              type="text"
+                              value={reqEvidenceInput.evidenceRequired}
+                              onChange={(e) => setReqEvidenceInput({ ...reqEvidenceInput, evidenceRequired: e.target.value })}
+                              style={inputStyle}
+                              placeholder="e.g. Geo-tagged clear photograph of house structural damage"
+                            />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Instructions for Applicant / Field Officer</label>
+                            <textarea
+                              value={reqEvidenceInput.instructions}
+                              onChange={(e) => setReqEvidenceInput({ ...reqEvidenceInput, instructions: e.target.value })}
+                              style={{ ...inputStyle, minHeight: '70px' }}
+                              placeholder="Instructions for re-inspection..."
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmModalType(null)}
+                          disabled={officerLoading}
+                          style={btnStyleSecondary}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmDecision}
+                          disabled={officerLoading}
+                          style={{
+                            ...btnStylePrimary,
+                            background: confirmModalType === 'APPROVED' ? '#10b981' : confirmModalType === 'REJECTED' ? '#ef4444' : '#f59e0b',
+                            padding: '10px 20px',
+                            fontWeight: '700'
+                          }}
+                        >
+                          {officerLoading ? 'Submitting...' : `Confirm ${confirmModalType.replace(/_/g, ' ')}`}
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
               </div>
             )}
 

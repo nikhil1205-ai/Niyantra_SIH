@@ -158,9 +158,26 @@ class AIAction(SQLModel, table=True):
     requested_by: str = Field(default="system")
     parameters_json: str = Field(default="{}")
     required_autonomy: str
-    status: str = Field(default="PROPOSED")  # PROPOSED, PERMITTED, REQUIRES_REAUTHORIZATION, RESTRICTED, BLOCKED, EXECUTED, REQUIRES_HUMAN_AUTHORIZATION
+    status: str = Field(default="PROPOSED")  # PROPOSED, PERMITTED, REQUIRES_REAUTHORIZATION, RESTRICTED, BLOCKED, EXECUTED, REQUIRES_HUMAN_AUTHORIZATION, AUTHORIZED_BY_OFFICER, REJECTED
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class OfficerDecision(SQLModel, table=True):
+    """
+    Module 6: Represents a decision made by a human officer when human authorization
+    is required or autonomous authority is reduced.
+    """
+    __tablename__ = "officer_decisions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    decision_id: str = Field(index=True, unique=True)
+    case_id: str = Field(index=True)
+    action_id: Optional[str] = Field(default=None)
+    decision: str  # APPROVED, REJECTED, MORE_EVIDENCE_REQUESTED
+    reason: str = Field(default="")
+    decided_by: str = Field(default="Officer John Doe")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ─── API PYDANTIC SCHEMAS ──────────────────────────────────────────────────────
@@ -244,3 +261,19 @@ class ActionExecutionDecision(BaseModel):
     required_autonomy: str
     risk_score: float
     reason: str
+
+
+class OfficerDecisionRequest(BaseModel):
+    """Module 6: Payload for POST /api/cases/{case_id}/decision"""
+    decision: str                     # APPROVED | REJECTED
+    reason: str                       # mandatory justification
+    action_id: Optional[str] = None   # target AI action if applicable
+    officer_name: str = "Officer John Doe"
+
+
+class OfficerRequestEvidenceRequest(BaseModel):
+    """Module 6: Payload for POST /api/cases/{case_id}/request-evidence"""
+    evidence_required: str
+    instructions: str = ""
+    officer_name: str = "Officer John Doe"
+
