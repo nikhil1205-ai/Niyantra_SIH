@@ -68,7 +68,7 @@ export default function Navbar() {
                     className={`nav-link-2 ${location.pathname === '/demo' ? 'w--current' : ''}`}
                     onClick={() => setIsOpen(false)}
                   >
-                    Demo
+                    Workflow
                   </Link>
                 </li>
                 <li>

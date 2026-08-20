@@ -6,7 +6,7 @@ import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
 import NiyantraWorkspace from './pages/NiyantraWorkspace'
 import RiskEngine from './pages/RiskEngine'
-import Demo from './pages/Demo'
+import Workflow from './pages/Demo'
 import About from './pages/About'
 
 // Policy Sub-pages
@@ -29,7 +29,7 @@ export default function App() {
           {/* Primary NIYANTRA Routes */}
           <Route path="workspace" element={<NiyantraWorkspace />} />
           <Route path="risk-engine" element={<RiskEngine />} />
-          <Route path="demo" element={<Demo />} />
+          <Route path="demo" element={<Workflow />} />
           <Route path="about" element={<About />} />
 
           {/* Backward Compatibility Alias Routes */}
@@ -37,7 +37,7 @@ export default function App() {
           <Route path="free-tutorials" element={<NiyantraWorkspace />} />
           <Route path="trainings" element={<NiyantraWorkspace />} />
           <Route path="policies" element={<RiskEngine />} />
-          <Route path="contact" element={<Demo />} />
+          <Route path="contact" element={<Workflow />} />
           <Route path="our-story" element={<About />} />
 
           {/* Governance & Privacy Sub-pages */}

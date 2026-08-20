@@ -59,7 +59,7 @@ export default function Footer() {
               <div className="heading-style-h3">Resources</div>
               <div className="footer_menu_links">
                 <Link to="/demo" className="footer_link">
-                  Interactive Demo
+                  Interactive Workflow
                 </Link>
                 <Link to="/risk-engine" className="footer_link">
                   Explainability Lineage

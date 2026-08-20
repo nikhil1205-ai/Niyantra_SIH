@@ -23,7 +23,7 @@ export default function About() {
                   Every risk score change, policy trigger, and autonomy shift is fully logged with evidence lineage to provide complete explainability for auditors, supervisors, and decision-makers.
                 </div>
                 <Link to="/demo" className="button-primary w-button">
-                  Explore NIYANTRA Demo
+                  Explore NIYANTRA Workflow
                 </Link>
               </div>
             </div>
