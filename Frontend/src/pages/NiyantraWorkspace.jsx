@@ -8,8 +8,8 @@ const WORKSPACE_SECTIONS = [
   { id: 'Risk', label: 'Risk Engine' },
   { id: 'Progress', label: 'Progress Pipeline' },
   { id: 'EventUpdates', label: 'Event Updates' },
-  { id: 'History', label: 'History & Audits' },
   { id: 'Officer Review', label: 'Officer Review' },
+  { id: 'History', label: 'History & Audits' },
 ]
 
 
@@ -1835,10 +1835,10 @@ export default function NiyantraWorkspace() {
                     {/* ══════════════════════════════════════════════════════════ */}
                     {/* REASON LAYER: SIDE-BY-SIDE EVIDENCE & RISK CONTRIBUTORS   */}
                     {/* ══════════════════════════════════════════════════════════ */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div style={{ display: 'block', width: '100%' }}>
                       
                       {/* Evidence Conflict Card */}
-                      <div style={{ ...cardBoxStyle, border: caseDetails.has_evidence_conflict ? '2px solid #f59e0b' : '1px solid #e2e8f0', background: caseDetails.has_evidence_conflict ? '#fffbeb' : '#ffffff' }}>
+                      <div style={{ ...cardBoxStyle, border: caseDetails.has_evidence_conflict ? '2px solid #f59e0b' : '1px solid #e2e8f0', background: caseDetails.has_evidence_conflict ? '#fffbeb' : '#ffffff', width: '100%', boxSizing: 'border-box' }}>
                         <h4 style={{ ...cardHeaderStyle, color: caseDetails.has_evidence_conflict ? '#b45309' : '#0f172a' }}>
                           EVIDENCE & GROUND INSPECTION SUMMARY
                         </h4>
@@ -1850,7 +1850,7 @@ export default function NiyantraWorkspace() {
                           </div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                           {/* AI Box */}
                           <div style={{ padding: '12px', background: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                             <div style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>AI Vision Scan (Module 2)</div>
@@ -1873,124 +1873,6 @@ export default function NiyantraWorkspace() {
                             </div>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Risk Factor Contributors Breakdown */}
-                      <div style={cardBoxStyle}>
-                        <h4 style={cardHeaderStyle}>RISK ENGINE FACTOR CONTRIBUTORS</h4>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {caseDetails.risk?.risk_factors && caseDetails.risk.risk_factors.length > 0 ? (
-                            caseDetails.risk.risk_factors.map((rf, idx) => {
-                              const rawVal = Number(rf.factor_risk || 0)
-                              const weightVal = Number(rf.weight || 0)
-                              const pointsVal = (rawVal * weightVal).toFixed(1)
-                              return (
-                                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                                  <span style={{ fontWeight: '600', color: '#334155' }}>{rf.display || rf.factor.replace(/_/g, ' ')} ({rf.raw_label || 'Calculated'})</span>
-                                  <span style={{ fontWeight: '800', color: Number(pointsVal) > 15 ? '#dc2626' : '#475569' }}>+{pointsVal} pts</span>
-                                </div>
-                              )
-                            })
-                          ) : (
-                            <>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#fef2f2', borderRadius: '4px', border: '1px solid #fecaca' }}>
-                                <span style={{ fontWeight: '700', color: '#991b1b' }}>Process Anomaly (Evidence Conflict)</span>
-                                <span style={{ fontWeight: '800', color: '#dc2626' }}>+28.0 pts</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: '600', color: '#334155' }}>Evidence Reliability Factor</span>
-                                <span style={{ fontWeight: '800', color: '#475569' }}>+12.0 pts</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: '600', color: '#334155' }}>Action Impact Sensitivity</span>
-                                <span style={{ fontWeight: '800', color: '#475569' }}>+10.0 pts</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: '600', color: '#334155' }}>AI Agent Confidence Variance</span>
-                                <span style={{ fontWeight: '800', color: '#475569' }}>+8.0 pts</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: '600', color: '#334155' }}>Disaster Policy Sensitivity</span>
-                                <span style={{ fontWeight: '800', color: '#475569' }}>+6.0 pts</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: '#f8fafc', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: '600', color: '#334155' }}>Financial Impact Value</span>
-                                <span style={{ fontWeight: '800', color: '#475569' }}>+4.0 pts</span>
-                              </div>
-                            </>
-                          )}
-                          <div style={{ borderTop: '2px solid #cbd5e1', paddingTop: '8px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
-                            <span>TOTAL COMPUTED RISK SCORE</span>
-                            <span style={{ color: caseDetails.current_risk > 60 ? '#dc2626' : '#166534' }}>{caseDetails.current_risk != null ? caseDetails.current_risk.toFixed(1) : '68.0'} / 100</span>
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* ══════════════════════════════════════════════════════════ */}
-                    {/* LAYER 3: RISK HISTORY TREND & LIVE CASE EVENT STREAM      */}
-                    {/* ══════════════════════════════════════════════════════════ */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                      
-                      {/* Risk History Trend Visual */}
-                      <div style={cardBoxStyle}>
-                        <h4 style={cardHeaderStyle}>RISK EVALUATION TREND (History Lineage)</h4>
-                        
-                        {riskHistory.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {riskHistory.map((r, idx) => (
-                              <div key={r.risk_id} style={{ padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b' }}>
-                                    Evaluation #{idx + 1}: {r.explanation || 'Risk Assessment'}
-                                  </div>
-                                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                                    {new Date(r.created_at).toLocaleString()}
-                                  </div>
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
-                                  <div style={{ fontSize: '20px', fontWeight: '900', color: r.risk_score > 60 ? '#dc2626' : '#166534' }}>
-                                    {r.risk_score} <span style={{ fontSize: '11px', color: '#94a3b8' }}>/100</span>
-                                  </div>
-                                  <span style={{ fontSize: '10px', fontWeight: '800', background: r.risk_level === 'HIGH' ? '#fee2e2' : '#dcfce7', color: r.risk_level === 'HIGH' ? '#dc2626' : '#166534', padding: '1px 6px', borderRadius: '4px' }}>
-                                    {r.risk_level}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>No risk evaluation history recorded yet.</div>
-                        )}
-                      </div>
-
-                      {/* Live Case Event Feed */}
-                      <div style={cardBoxStyle}>
-                        <h4 style={cardHeaderStyle}>LIVE CASE EVENT FEED (Audit Stream)</h4>
-                        
-                        {caseDetails.events && caseDetails.events.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
-                            {caseDetails.events.slice().reverse().map(evt => (
-                              <div key={evt.event_id} style={{ padding: '8px 12px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
-                                    {evt.event_type.replace(/_/g, ' ')}
-                                  </div>
-                                  <div style={{ fontSize: '11px', color: '#64748b' }}>
-                                    Source: {evt.source} | {evt.description || 'Event recorded'}
-                                  </div>
-                                </div>
-                                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>
-                                  {new Date(evt.created_at).toLocaleTimeString()}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>No event logs available for this case.</div>
-                        )}
                       </div>
 
                     </div>
@@ -2456,66 +2338,15 @@ export default function NiyantraWorkspace() {
                   </span>
                 </div>
 
-                {/* Main 2-Column Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', alignItems: 'start' }}>
+                {/* Main 1-Column Layout */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   
-                  {/* Left Column: Officer Review Queue */}
-                  <div style={cardBoxStyle}>
-                    <h4 style={{ ...cardHeaderStyle, fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '12px' }}>
-                      Intervention Queue
-                    </h4>
-                    
-                    {officerQueue.length === 0 ? (
-                      <div style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
-                        No cases currently require human officer review.
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '600px', overflowY: 'auto' }}>
-                        {officerQueue.map(c => {
-                          const isActive = c.case_id === (officerDetails?.case_id || activeCaseRef)
-                          return (
-                            <div
-                              key={c.case_id}
-                              onClick={() => handleSelectOfficerCase(c.case_id)}
-                              style={{
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: isActive ? '2px solid #dc2626' : '1px solid #e2e8f0',
-                                background: isActive ? '#fef2f2' : '#ffffff',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <span style={{ fontSize: '13px', fontWeight: '800', color: isActive ? '#dc2626' : '#1e293b' }}>
-                                  {c.case_id}
-                                </span>
-                                <span style={{ fontSize: '10px', fontWeight: '700', background: c.current_autonomy === 'L1' ? '#fef2f2' : '#ecfdf5', color: c.current_autonomy === 'L1' ? '#dc2626' : '#059669', padding: '2px 6px', borderRadius: '4px', border: '1px solid' }}>
-                                  {c.current_autonomy || 'L1'}
-                                </span>
-                              </div>
-                              <div style={{ fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>
-                                {c.applicant_name} ({c.district})
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700', marginBottom: '4px' }}>
-                                Risk: {c.current_risk != null ? c.current_risk.toFixed(1) : 'High'} | {c.has_evidence_conflict ? 'Conflict' : 'Review Needed'}
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#64748b', lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                {c.reason}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right Column: Case Cockpit Workspace */}
+                  {/* Case Cockpit Workspace */}
                   <div>
                     {(!officerDetails && !activeCaseRef) ? (
                       <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
-                        <h3>Select a Case from the Queue</h3>
-                        <p>Click any case card in the left Intervention Queue to open the decision cockpit.</p>
+                        <h3>No Active Case Selected for Review</h3>
+                        <p>Select a case from the Left Sidebar History or top lookup to open the decision cockpit.</p>
                       </div>
                     ) : officerLoading ? (
                       <div style={{ ...cardBoxStyle, textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
@@ -2559,118 +2390,6 @@ export default function NiyantraWorkspace() {
                             </div>
                           </div>
                         </div>
-
-                        {/* 2. WHY IS THIS CASE HERE? (EXPLANATION NARRATIVE PANEL) */}
-                        <div style={{ ...cardBoxStyle, background: '#fffbeb', borderLeft: '4px solid #f59e0b' }}>
-                          <h4 style={{ ...cardHeaderStyle, color: '#92400e', marginBottom: '10px' }}>
-                            WHY IS THIS CASE HERE? (Governance Decision Lineage)
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            {officerDetails.explanation_narrative?.map((step, idx) => (
-                              <div key={idx} style={{ fontSize: '13px', color: '#78350f', fontWeight: '500', lineHeight: '1.5' }}>
-                                {step}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 3. SIDE-BY-SIDE EVIDENCE COMPARISON & CONFLICT ALERT */}
-                        <div style={cardBoxStyle}>
-                          <h4 style={cardHeaderStyle}>EVIDENCE COMPARISON (AI Assessment vs Field Inspection)</h4>
-                          
-                          {officerDetails.has_evidence_conflict && (
-                            <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontSize: '18px' }}>⚠️</span>
-                              <span>EVIDENCE CONFLICT DETECTED: Ground field report contradicts AI image assessment (+55 Process Anomaly risk penalty applied).</span>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                            {/* AI Assessment Box */}
-                            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                AI Vision & Document Assessment (Module 2)
-                              </div>
-                              <div style={{ fontSize: '18px', fontWeight: '800', color: officerDetails.ai_damage_level === 'SEVERE' ? '#dc2626' : '#d97706', marginBottom: '6px' }}>
-                                {officerDetails.ai_damage_level} DAMAGE
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#475569' }}>
-                                Assessed via multi-agent vision scan of citizen upload (89% Confidence).
-                              </div>
-                            </div>
-
-                            {/* Field Inspection Box */}
-                            <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                Verified Field Inspection (Module 4)
-                              </div>
-                              <div style={{ fontSize: '18px', fontWeight: '800', color: '#0284c7', marginBottom: '6px' }}>
-                                {officerDetails.field_damage_level} DAMAGE
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#0369a1' }}>
-                                Submitted by {officerDetails.field_evidence?.submitted_by || 'Government Officer'} on site.
-                              </div>
-                              {officerDetails.field_evidence?.description && (
-                                <div style={{ fontSize: '11px', color: '#334155', fontStyle: 'italic', marginTop: '6px', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e0f2fe' }}>
-                                  "{officerDetails.field_evidence.description}"
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 4. AI AGENT FINDINGS (MODULE 2) */}
-                        <div style={cardBoxStyle}>
-                          <h4 style={cardHeaderStyle}>AI AGENT FINDINGS (Structured Findings Package)</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-                            {officerDetails.ai_findings?.map((agent, idx) => {
-                              const isPass = agent.status === 'VERIFIED' || agent.status === 'ELIGIBLE'
-                              return (
-                                <div key={idx} style={{ padding: '14px', borderRadius: '8px', border: isPass ? '1px solid #bbf7d0' : '1px solid #fde68a', background: isPass ? '#f0fdf4' : '#fffbeb' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>{agent.agent_name.replace(/_/g, ' ')}</span>
-                                    <span style={{ fontSize: '11px', fontWeight: '700', color: isPass ? '#166534' : '#92400e', background: isPass ? '#dcfce7' : '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>
-                                      {agent.status}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: '12px', color: '#475569' }}>
-                                    Confidence: <strong>{agent.confidence ? Math.round(agent.confidence * 100) + '%' : 'N/A'}</strong>
-                                  </div>
-                                  {agent.damage_level && (
-                                    <div style={{ fontSize: '12px', color: '#1e293b', marginTop: '4px', fontWeight: '600' }}>
-                                      Damage: {agent.damage_level}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {/* 5. BLOCKED / RESTRICTED AI ACTION (MODULE 5 TOOL GATEWAY) */}
-                        {officerDetails.actions && officerDetails.actions.length > 0 && (
-                          <div style={{ ...cardBoxStyle, borderTop: '4px solid #ef4444' }}>
-                            <h4 style={{ ...cardHeaderStyle, color: '#b91c1c' }}>BLOCKED / RESTRICTED AI ACTION (Tool Gateway Status)</h4>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                              {officerDetails.actions.map(act => (
-                                <div key={act.action_id} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#991b1b' }}>{act.action_type.replace(/_/g, ' ')}</span>
-                                    <span style={{ fontSize: '11px', fontWeight: '800', background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
-                                      🔒 {act.status}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: '12px', color: '#7f1d1d', marginBottom: '6px' }}>
-                                    Required Autonomy Level: <strong>{act.required_autonomy}</strong> | Current Case Autonomy: <strong>{officerDetails.current_autonomy}</strong>
-                                  </div>
-                                  <div style={{ fontSize: '12px', color: '#991b1b', fontStyle: 'italic', background: '#ffffff', padding: '8px 12px', borderRadius: '4px', border: '1px solid #fecaca' }}>
-                                    Tool Gateway Enforcement: Current case autonomy does not permit autonomous execution of this action. Human officer authorization is required.
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
 
                         {/* 6. OFFICER DECISION CONTROLS */}
                         <div style={{ ...cardBoxStyle, background: '#f8fafc', border: '2px solid #cbd5e1' }}>
@@ -2721,6 +2440,49 @@ export default function NiyantraWorkspace() {
                             </>
                           )}
                         </div>
+
+                         
+
+                        {/* 2. WHY IS THIS CASE HERE? (EXPLANATION NARRATIVE PANEL) */}
+                        <div style={{ ...cardBoxStyle, background: '#fffbeb', borderLeft: '4px solid #f59e0b' }}>
+                          <h4 style={{ ...cardHeaderStyle, color: '#92400e', marginBottom: '10px' }}>
+                            WHY IS THIS CASE HERE? (Governance Decision Lineage)
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {officerDetails.explanation_narrative?.map((step, idx) => (
+                              <div key={idx} style={{ fontSize: '13px', color: '#78350f', fontWeight: '500', lineHeight: '1.5' }}>
+                                {step}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                         
+
+                        {/* 5. BLOCKED / RESTRICTED AI ACTION (MODULE 5 TOOL GATEWAY) */}
+                        {officerDetails.actions && officerDetails.actions.length > 0 && (
+                          <div style={{ ...cardBoxStyle, borderTop: '4px solid #ef4444' }}>
+                            <h4 style={{ ...cardHeaderStyle, color: '#b91c1c' }}>BLOCKED / RESTRICTED AI ACTION (Tool Gateway Status)</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {officerDetails.actions.map(act => (
+                                <div key={act.action_id} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#991b1b' }}>{act.action_type.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '800', background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
+                                      🔒 {act.status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#7f1d1d', marginBottom: '6px' }}>
+                                    Required Autonomy Level: <strong>{act.required_autonomy}</strong> | Current Case Autonomy: <strong>{officerDetails.current_autonomy}</strong>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#991b1b', fontStyle: 'italic', background: '#ffffff', padding: '8px 12px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                                    Tool Gateway Enforcement: Current case autonomy does not permit autonomous execution of this action. Human officer authorization is required.
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* 7. PAST OFFICER DECISIONS LOG */}
                         {officerDetails.past_decisions && officerDetails.past_decisions.length > 0 && (
