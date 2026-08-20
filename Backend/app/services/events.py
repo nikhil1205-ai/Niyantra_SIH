@@ -45,6 +45,7 @@ from app.models import (
     EventVerifyRequest,
 )
 from app.services.risk import RiskOrchestrator
+from app.services.gateway import re_evaluate_pending_actions
 
 
 # ─── ACTION STATE TRANSITIONS ─────────────────────────────────────────────────
@@ -285,6 +286,10 @@ class EventProcessor:
             case_obj.status        = "RUNTIME_REEVALUATION"
         case_obj.updated_at = now
         self.session.add(case_obj)
+        self.session.commit()
+
+        if before_autonomy != after_autonomy:
+            re_evaluate_pending_actions(case_id)
 
         # Emit action / autonomy events
         if new_action_state != before_action:
@@ -307,7 +312,7 @@ class EventProcessor:
                 "risk":   after_risk,
             }, now)
 
-        self.session.commit()
+        # Removed redundant self.session.commit() because we committed early to allow gateway queries
 
         return {
             "success":           True,
@@ -427,6 +432,10 @@ class EventProcessor:
             case_obj.status        = "RUNTIME_REEVALUATION"
         case_obj.updated_at = now
         self.session.add(case_obj)
+        self.session.commit()
+        
+        if before_autonomy != after_autonomy:
+            re_evaluate_pending_actions(case_id)
 
         if new_action_state != before_action:
             self._emit(case_id, "ACTION_REAUTHORIZATION_REQUIRED" if new_action_state == "REQUIRES_REAUTHORIZATION" else "ACTION_STATE_CHANGED",
@@ -437,7 +446,7 @@ class EventProcessor:
                 "from": before_autonomy, "to": after_autonomy,
             }, now)
 
-        self.session.commit()
+        # Removed redundant self.session.commit()
 
         return {
             "success":           True,

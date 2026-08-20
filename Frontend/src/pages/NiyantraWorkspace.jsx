@@ -29,6 +29,9 @@ export default function NiyantraWorkspace() {
   const [activeCaseRef, setActiveCaseRef] = useState('')
   const [caseDetails, setCaseDetails] = useState(null)
   const [submittedResult, setSubmittedResult] = useState(null)
+  
+  // Module 5 Actions State
+  const [actions, setActions] = useState([])
 
   // Module 1 Form State
   const [form, setForm] = useState({
@@ -257,6 +260,17 @@ export default function NiyantraWorkspace() {
       const data = await res.json()
       setCaseDetails(data)
       setActiveCaseRef(data.case_id)
+      
+      // Fetch actions for Module 5
+      try {
+        const actRes = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/actions`)
+        if (actRes.ok) {
+          const actData = await actRes.json()
+          setActions(actData)
+        }
+      } catch (actErr) {
+        console.error("Failed to fetch actions", actErr)
+      }
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
@@ -397,6 +411,50 @@ export default function NiyantraWorkspace() {
       setErrorMsg(err.message)
     } finally {
       setEventLoading(false)
+    }
+  }
+
+  // Module 5: Action Gateway Handlers
+  const handleProposeDemoAction = async () => {
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) return
+    setErrorMsg('')
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/cases/${encodeURIComponent(targetId)}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action_type: 'PREPARE_RELIEF_PAYMENT',
+          requested_by: 'relief_agent',
+          parameters: { amount: 25000 }
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to propose action.')
+      await fetchCaseDetails(targetId)
+    } catch (err) {
+      setErrorMsg(err.message)
+    }
+  }
+
+  const handleExecuteAction = async (actionId) => {
+    const targetId = caseDetails?.case_id || activeCaseRef
+    if (!targetId) return
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/actions/${encodeURIComponent(actionId)}/execute`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error('Action execution request failed.')
+      const data = await res.json()
+      if (data.decision === 'ALLOWED') {
+        setSuccessMsg(`Action permitted and executed successfully.`)
+      } else {
+        setErrorMsg(`Action blocked by Tool Gateway. Reason: ${data.reason}`)
+      }
+      await fetchCaseDetails(targetId)
+    } catch (err) {
+      setErrorMsg(err.message)
     }
   }
 
@@ -1588,6 +1646,63 @@ export default function NiyantraWorkspace() {
                             New field inspection evidence contradicts the previous AI damage assessment. This increased the Process Anomalies risk factor significantly, pushing the total risk into the HIGH range and triggering autonomy downgrade.
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* AI ACTIONS & TOOL GATEWAY */}
+                    {actions && actions.length > 0 && (
+                      <div style={{ ...cardBoxStyle, borderTop: '4px solid #6366f1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <h4 style={{ ...cardHeaderStyle, color: '#4338ca', margin: 0 }}>AI Actions & Tool Gateway</h4>
+                          <button onClick={handleProposeDemoAction} style={{ ...btnStyleSecondary, padding: '6px 12px', fontSize: '12px' }}>
+                            Propose Demo Action
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {actions.map(act => {
+                            let statusColor = '#94a3b8';
+                            let statusBg = '#f8fafc';
+                            if (act.status === 'PROPOSED') { statusColor = '#3b82f6'; statusBg = '#eff6ff'; }
+                            if (act.status === 'PERMITTED') { statusColor = '#10b981'; statusBg = '#ecfdf5'; }
+                            if (act.status === 'REQUIRES_REAUTHORIZATION' || act.status === 'REQUIRES_HUMAN_AUTHORIZATION') { statusColor = '#ef4444'; statusBg = '#fef2f2'; }
+                            if (act.status === 'EXECUTED') { statusColor = '#22c55e'; statusBg = '#f0fdf4'; }
+                            if (act.status === 'BLOCKED') { statusColor = '#64748b'; statusBg = '#f1f5f9'; }
+
+                            return (
+                              <div key={act.action_id} style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#1e293b' }}>{act.action_type.replace(/_/g, ' ')}</div>
+                                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: statusColor, background: statusBg, padding: '4px 8px', borderRadius: '4px', border: `1px solid ${statusColor}` }}>
+                                    {act.status}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                                  <div><strong>ID:</strong> {act.action_id}</div>
+                                  <div><strong>Req. Autonomy:</strong> {act.required_autonomy}</div>
+                                  <div><strong>Current Autonomy:</strong> {caseDetails.current_autonomy || 'L1'}</div>
+                                </div>
+                                
+                                {act.status === 'PERMITTED' && (
+                                  <button onClick={() => handleExecuteAction(act.action_id)} style={{ ...btnStylePrimary, width: '100%', background: '#10b981' }}>
+                                    Execute Action via Tool Gateway
+                                  </button>
+                                )}
+                                {(act.status === 'REQUIRES_REAUTHORIZATION' || act.status === 'REQUIRES_HUMAN_AUTHORIZATION') && (
+                                  <div style={{ fontSize: '12px', color: '#b91c1c', padding: '8px', background: '#fef2f2', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                                    This action requires human authorization. Autonomy level {caseDetails.current_autonomy || 'L1'} is insufficient for {act.required_autonomy}.
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {actions && actions.length === 0 && (
+                      <div style={{ marginBottom: '20px', textAlign: 'right' }}>
+                        <button onClick={handleProposeDemoAction} style={{ ...btnStylePrimary, padding: '8px 16px', fontSize: '13px' }}>
+                          Simulate AI Proposing Action
+                        </button>
                       </div>
                     )}
 

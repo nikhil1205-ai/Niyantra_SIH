@@ -144,6 +144,25 @@ class DecisionLineage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class AIAction(SQLModel, table=True):
+    """
+    Module 5: Represents an action proposed by an AI Agent that must pass through
+    the Tool Gateway for execution based on the case's current autonomy level.
+    """
+    __tablename__ = "ai_actions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action_id: str = Field(index=True, unique=True)
+    case_id: str = Field(index=True)
+    action_type: str
+    requested_by: str = Field(default="system")
+    parameters_json: str = Field(default="{}")
+    required_autonomy: str
+    status: str = Field(default="PROPOSED")  # PROPOSED, PERMITTED, REQUIRES_REAUTHORIZATION, RESTRICTED, BLOCKED, EXECUTED, REQUIRES_HUMAN_AUTHORIZATION
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 # ─── API PYDANTIC SCHEMAS ──────────────────────────────────────────────────────
 
 class EvidenceInput(BaseModel):
@@ -210,3 +229,18 @@ class EventVerifyRequest(BaseModel):
     """Payload for POST /api/cases/{case_id}/events/{event_id}/verify"""
     verified_by: str = "OFFICER"
     notes: str = ""
+
+
+class ActionProposalRequest(BaseModel):
+    action_type: str
+    requested_by: str = "relief_agent"
+    parameters: Dict[str, Any] = {}
+
+
+class ActionExecutionDecision(BaseModel):
+    action_id: str
+    decision: str
+    current_autonomy: str
+    required_autonomy: str
+    risk_score: float
+    reason: str
