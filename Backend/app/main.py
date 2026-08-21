@@ -42,9 +42,10 @@ def root_health_check():
         "module": "Modules 1-6 — Intake, AI Review, Risk, Autonomy, Tool Gateway & Officer Review"
     }
 
-@app.get("/health")
-def health_check():
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health():
     return {"status": "ok"}
+
 
 
 if __name__ == "__main__":
