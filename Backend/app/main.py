@@ -42,6 +42,11 @@ def root_health_check():
         "module": "Modules 1-6 — Intake, AI Review, Risk, Autonomy, Tool Gateway & Officer Review"
     }
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
